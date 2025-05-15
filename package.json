@@ -64,5 +64,13 @@
     "@vscode/test-electron": "^2.5.2",
     "eslint": "^9.25.1",
     "typescript": "^5.8.3"
-  }
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/boopathirk/get-unique-values.git"
+  },
+  "bugs": {
+    "url": "https://github.com/boopathirk/get-unique-values/issues"
+  },
+  "homepage": "https://github.com/boopathirk/get-unique-values"
 }

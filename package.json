@@ -1,0 +1,68 @@
+{
+  "name": "get-unique-values",
+  "displayName": "get-unique-values",
+  "publisher": "boopathi",
+  "description": "Remove duplicate lines from the file or selection",
+  "version": "0.0.1",
+  "engines": {
+    "vscode": "^1.99.0"
+  },
+  "categories": [
+    "Other",
+    "Formatters"
+  ],
+  "keywords": [
+    "unique",
+    "duplicate",
+    "remove duplicates",
+    "clean",
+    "format"
+  ],
+  "activationEvents": [
+    "onStartupFinished"
+  ],
+  "main": "./out/extension.js",
+  "contributes": {
+    "commands": [
+      {
+        "command": "get-unique-values.run",
+        "title": "Get Unique Values (Remove Duplicates & Empty Lines)"
+      }
+    ],
+    "keybindings": [
+      {
+        "command": "get-unique-values.run",
+        "key": "ctrl+alt+u",
+        "mac": "cmd+alt+u",
+        "when": "editorTextFocus"
+      }
+    ],
+    "menus": {
+      "editor/context": [
+        {
+          "command": "get-unique-values.run",
+          "group": "modification"
+        }
+      ]
+    }
+  },
+  "scripts": {
+    "vscode:prepublish": "npm run compile",
+    "compile": "tsc -p ./",
+    "watch": "tsc -watch -p ./",
+    "pretest": "npm run compile && npm run lint",
+    "lint": "eslint src",
+    "test": "vscode-test"
+  },
+  "devDependencies": {
+    "@types/mocha": "^10.0.10",
+    "@types/node": "20.x",
+    "@types/vscode": "1.99.0",
+    "@typescript-eslint/eslint-plugin": "^8.31.1",
+    "@typescript-eslint/parser": "^8.31.1",
+    "@vscode/test-cli": "^0.0.10",
+    "@vscode/test-electron": "^2.5.2",
+    "eslint": "^9.25.1",
+    "typescript": "^5.8.3"
+  }
+}

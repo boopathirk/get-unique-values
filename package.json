@@ -97,6 +97,10 @@
           "when": "false"
         },
         {
+          "command": "get-unique-values.csv.export",
+          "when": "activeCustomEditorId == 'getUniqueValues.csvViewer'"
+        },
+        {
           "command": "get-unique-values.openCsvViewer",
           "when": "resourceExtname =~ /^\\.(csv|tsv|psv)$/"
         }

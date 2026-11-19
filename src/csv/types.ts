@@ -145,3 +145,11 @@ export interface ExportResult {
 }
 
 export const XLSX_MAX_ROWS = 1_048_576;
+
+export interface DuplicateColumnsResult {
+    /** Groups of 2+ columns whose values are identical in every row (all-empty columns excluded). */
+    groups: number[][];
+    /** Columns that are empty in every row. */
+    emptyColumns: number[];
+    rows: number;
+}

@@ -7,6 +7,7 @@ export interface SearchMode {
 export type Predicate =
     | { kind: 'search'; query: string; column: number | null; mode: SearchMode }
     | { kind: 'columnIn'; column: number; values: string[] }
+    | { kind: 'keyEquals'; columns: number[]; values: string[] }
     | { kind: 'badRows' };
 
 export type RowTest = (fields: string[]) => boolean;
@@ -37,6 +38,11 @@ export function compilePredicates(preds: Predicate[]): { test: RowTest; badRowsO
     for (const p of preds) {
         if (p.kind === 'badRows') {
             badRowsOnly = true;
+            continue;
+        }
+        if (p.kind === 'keyEquals') {
+            const { columns, values } = p;
+            tests.push((f) => columns.every((c, i) => (f[c] ?? '') === values[i]));
             continue;
         }
         if (p.kind === 'columnIn') {

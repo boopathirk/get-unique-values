@@ -61,4 +61,14 @@ suite('predicates', () => {
         assert.strictEqual(compilePredicates([search('')]).empty, true);
         assert.strictEqual(compilePredicates([]).empty, true);
     });
+    test('keyEquals matches every listed column', () => {
+        const { test: t } = compilePredicates([{ kind: 'keyEquals', columns: [0, 2], values: ['a', 'c'] }]);
+        assert.strictEqual(t(['a', 'x', 'c']), true);
+        assert.strictEqual(t(['a', 'x', 'd']), false);
+        assert.strictEqual(t(['b', 'x', 'c']), false);
+    });
+    test('keyEquals treats a missing cell as empty', () => {
+        const { test: t } = compilePredicates([{ kind: 'keyEquals', columns: [1], values: [''] }]);
+        assert.strictEqual(t(['a']), true);
+    });
 });

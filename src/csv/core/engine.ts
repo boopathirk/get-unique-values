@@ -1,4 +1,5 @@
 import * as fs from 'fs';
+import { createHash } from 'crypto';
 import { detect } from './detect';
 import { Predicate, compilePredicates } from './predicates';
 import { parseRow } from './rowParser';
@@ -6,7 +7,7 @@ import { RowIndexer } from './rowIndexer';
 import { ResultSet, coalesce } from './resultSet';
 import { StatsAccumulator } from './columnStats';
 import type {
-    CancelToken, ColumnStats, DuplicateGroup, DuplicateResult, Encoding, FileInfo, FilterProgress, FilterResult, IndexProgress,
+    CancelToken, ColumnStats, DuplicateColumnsResult, DuplicateGroup, DuplicateResult, Encoding, FileInfo, FilterProgress, FilterResult, IndexProgress,
     OpenResult, PageResult, ParseOptions, UniqueResult,
 } from '../types';
 
@@ -365,6 +366,53 @@ export class CsvEngine {
         const result = acc.result();
         this.statsCache.set(column, result);
         return result;
+    }
+
+    /** Columns whose values are identical in every row, and columns that are empty throughout. */
+    async duplicateColumns(
+        token: CancelToken,
+        onProgress?: (scanned: number, total: number) => void,
+    ): Promise<DuplicateColumnsResult | null> {
+        await this.indexFinished;
+        this.throwIfIndexFailed();
+        const n = (await this.getInfo()).columnCount;
+        const total = this.dataRowCount;
+        const hashes = Array.from({ length: n }, () => createHash('sha1'));
+        const nonEmpty = new Array<boolean>(n).fill(false);
+        const outcome = await this.scan(
+            [[0, total]],
+            token,
+            (_rowNum, fields) => {
+                for (let c = 0; c < n; c++) {
+                    const v = fields[c] ?? '';
+                    hashes[c].update(v);
+                    hashes[c].update('\u0000');
+                    if (!nonEmpty[c] && v.trim() !== '') {
+                        nonEmpty[c] = true;
+                    }
+                }
+            },
+            (scanned) => onProgress?.(scanned, total),
+        );
+        if (outcome === 'cancelled') {
+            return null;
+        }
+        const byDigest = new Map<string, number[]>();
+        const emptyColumns: number[] = [];
+        for (let c = 0; c < n; c++) {
+            if (!nonEmpty[c]) {
+                emptyColumns.push(c);
+                continue;
+            }
+            const digest = hashes[c].digest('hex');
+            const group = byDigest.get(digest);
+            if (group) {
+                group.push(c);
+            } else {
+                byDigest.set(digest, [c]);
+            }
+        }
+        return { groups: [...byDigest.values()].filter((g) => g.length > 1), emptyColumns, rows: total };
     }
 
     /** Keys (one or more columns) that occur more than once, with counts and the row of the first occurrence. */

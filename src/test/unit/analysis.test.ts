@@ -95,4 +95,34 @@ suite('CsvEngine analysis', () => {
         const engine = await load(CSV);
         await assert.rejects(() => engine.duplicateKeys([], live()));
     });
+
+    const WIDE = 'a,b,c,d,e\n1,1,x,,y\n2,2,y,,x\n3,3,z, ,w\n';
+
+    test('duplicateColumns: identical columns and empty columns', async () => {
+        const engine = await load(WIDE);
+        const r = await engine.duplicateColumns(live());
+        assert.ok(r);
+        assert.deepStrictEqual(r.groups, [[0, 1]]);
+        assert.deepStrictEqual(r.emptyColumns, [3]);
+        assert.strictEqual(r.rows, 3);
+    });
+
+    test('duplicateColumns: nothing duplicated', async () => {
+        const engine = await load(CSV);
+        const r = await engine.duplicateColumns(live());
+        assert.ok(r);
+        assert.deepStrictEqual(r.groups, []);
+    });
+
+    test('duplicateColumns: cancelled returns null', async () => {
+        const engine = await load(WIDE);
+        assert.strictEqual(await engine.duplicateColumns({ cancelled: true }), null);
+    });
+
+    test('duplicateKeys with every column finds whole-row duplicates', async () => {
+        const engine = await load('a,b\n1,x\n2,y\n1,x\n');
+        const r = await engine.duplicateKeys([0, 1], live());
+        assert.ok(r);
+        assert.deepStrictEqual(r.groups.map((g) => [g.key, g.count, g.firstRow]), [[['1', 'x'], 2, 0]]);
+    });
 });

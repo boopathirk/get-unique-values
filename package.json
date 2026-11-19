@@ -119,6 +119,12 @@
     "configuration": {
       "title": "CSV Viewer",
       "properties": {
+        "getUniqueValues.csv.largeFileMB": {
+          "type": "number",
+          "default": 20,
+          "minimum": 0,
+          "markdownDescription": "Offer to open CSV/TSV/PSV files larger than this many MB in the CSV Viewer. Set 0 to turn the prompt off."
+        },
         "getUniqueValues.csv.defaultPageSize": {
           "type": "number",
           "enum": [

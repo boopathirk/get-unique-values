@@ -14,14 +14,18 @@ The existing command `get-unique-values.run` (remove duplicate and empty lines, 
 
 | Release | Scope |
 |---|---|
-| **v0.1.0 (this spec)** | CSV viewer core: detect/parse, indexing, pagination, search, unique values + filter, per-column colours, long-cell handling, column view settings |
-| v0.2.0 | Edit & save (cells, add/delete rows/columns, find & replace in column), sort by column, export (filtered rows, selected columns, full unique list), split large CSV |
-| v0.3.0 | AI prompts over CSV data: VS Code Language Model API first (Copilot models: Claude, GPT, …), optional own API keys (Anthropic / OpenAI) in SecretStorage, provider/model switch |
+| **v0.1.0 (this spec, §1-7)** | Viewer core: detect/parse, indexing, pagination, search, unique values + filter, per-column colours, long-cell handling, column show/hide (§4.3) |
+| **v0.1.x features (§8, items marked M1)** | Parse presets, skip lines/comments, header row number, quote/escape chars, trim, JSONL, large-file prompt, streamed dedupe, column types, column stats, duplicate-key finder |
+| **v0.2.0 (§8, M2)** | Edit & save, sort, export (JSON/JSONL/SQL/Markdown/XLSX, full unique list), split, data-quality report, more encodings, `.csv.gz`, tail mode |
+| **v0.3.0 (§8, M3)** | Compare two CSVs, merge/append/join, folder-wide search, bookmarks and recent files, column masking |
+| **v0.4.0** | AI prompts over CSV data: VS Code Language Model API first (Copilot models: Claude, GPT, …), optional own API keys (Anthropic / OpenAI) in SecretStorage, provider/model switch |
 | later | More line tools (sort, case-insensitive unique, count duplicates, trim, show duplicates) |
+
+Every feature below is in scope for the project; milestones only set build order. Each milestone gets its own implementation plan.
 
 ### Out of scope for v0.1.0
 
-Editing, saving, sorting, export, AI features, Excel files.
+Everything in §8 except the column show/hide feature in §4.3 (built in v0.1.0 itself); AI features; Excel input.
 
 ## 2. Architecture
 
@@ -142,7 +146,11 @@ A `FileSystemWatcher` on the document shows a "File changed on disk — Reload" 
 
 ### 4.3 Column view settings
 
-- **Column picker:** checkbox list with a search box, show all / hide all, and drag to reorder.
+- **Column picker:** checkbox list with a search box, show all / hide all, invert, and drag to reorder. Each row shows the column colour, type icon (once §8.12 lands) and empty %.
+- **Quick hide/show:** header menu → "Hide column"; a "N hidden" chip in the toolbar lists hidden columns for one-click restore.
+- **Smart toggles:** "Hide empty columns" (columns with 0 non-empty values, computed from the column stats scan), "Show only columns matching…" (name pattern/regex), "Show only these columns" for the columns with an active filter or search hit.
+- **Named column sets:** save the current hidden/order state as a set (e.g. "Pricing", "SEO") and switch between sets from a dropdown; sets can be included in a parse preset (§8.1).
+- Shortcut: `Ctrl+Shift+H` hides the selected column, `Ctrl+Shift+U` shows all.
 - **Resize** by dragging the header edge. **Pin** the first N columns (sticky). The row-number column is always shown and pinned.
 - **Saved per file** in `context.workspaceState`, keyed by file path + a hash of the header row:
   - hidden columns, order, widths, pinned count
@@ -214,3 +222,61 @@ Other changes:
 - `activationEvents`: drop `onStartupFinished`. Commands and custom editors activate the extension implicitly.
 - `.vscode/extensions.json`: correct the recommendation to `boopathi08.get-unique-values`.
 - README: feature list, screenshots/GIF, settings table. CHANGELOG: 0.1.0 entry.
+
+## 8. Feature catalog (all in scope)
+
+Milestone: **M1** = right after v0.1.0 core, **M2** = v0.2.0, **M3** = v0.3.0. All features reuse the row index and the worker scan mechanism (§2, §3.3) unless noted.
+
+### A. Opening and parsing
+
+| # | Feature | Design | M |
+|---|---|---|---|
+| 1 | Parse presets | Named profiles (delimiter, encoding, header row, quote chars, hidden columns/sets, colour mode, long-text mode). Stored in VS Code settings (`getUniqueValues.csv.presets`) so they sync. Auto-apply by glob (`*_export_*.csv`) via `filePattern`; manual pick from the options chip | M1 |
+| 2 | Skip first N lines, ignore comment lines | Indexer starts at the offset after N lines; lines starting with a configurable prefix (default `#`) are excluded from the index. Row numbers shown are file-relative | M1 |
+| 3 | Header row number | `headerRow` (1-based) replaces the on/off flag; rows above it are skipped, rows below form the data | M1 |
+| 4 | Custom quote and escape characters | `quoteChar` (default `"`), `escapeChar` (default same as quote → `""`; option `\`). Indexer state machine and `rowParser` take these as parameters | M1 |
+| 5 | Trim spaces in cells | Display-only toggle; applies in the renderer and in search/unique when "trim" is on | M1 |
+| 6 | More encodings | Windows-1252, Shift-JIS, GBK, UTF-16 via `TextDecoder`; chunk decoding keeps decoder state across chunks; "Reopen with encoding" in the options chip. Row index remains in byte offsets | M2 |
+| 7 | `.csv.gz` | Stream-decompress to a cache file under `globalStorageUri`, open that cache read-only, label tab with the original name; cache deleted on close or by LRU (500 MB cap) | M2 |
+| 8 | JSONL / NDJSON | Same indexer with line-based rows; columns are the union of top-level keys of the first 1000 objects, nested values shown as JSON text; `*.jsonl`, `*.ndjson` added to the custom editor selector | M1 |
+
+### B. Large files
+
+| # | Feature | Design | M |
+|---|---|---|---|
+| 9 | Large-file prompt | When a CSV/TSV above `getUniqueValues.csv.largeFileMB` (default 50) opens in the text editor, show a notification "Open in CSV Viewer?" with "Don't ask again" (per workspace). Uses `onDidOpenTextDocument` | M1 |
+| 10 | Tail / watch mode | Toolbar toggle; file watcher appends newly indexed rows from the last offset instead of re-indexing; view auto-scrolls to the last page when on the last page | M2 |
+| 11 | Streamed dedupe | Command "Remove Duplicates (large file → new file)": streams rows, tracks seen keys in a hash set (xxhash of the key columns, or the whole line), writes unique rows to `<name>.unique.csv`. Option: dedupe by key columns; keep first or last. Existing `Ctrl+Alt+U` behaviour unchanged | M1 |
+
+### C. Data checks
+
+| # | Feature | Design | M |
+|---|---|---|---|
+| 12 | Column type detection | Sample 1000 non-empty values per column: number, integer, date, URL, email, boolean, HTML (tag regex), JSON; ≥ 95% match wins, otherwise text. Icon in the header; the user can override per column | M1 |
+| 13 | Column stats panel | One scan per column, cached: empty %, distinct count (capped), min/max (numeric or lexicographic), min/max/avg length, 5 sample values. Opened from the header menu next to "Unique values" | M1 |
+| 14 | Duplicate key finder | Choose one or more key columns; scan counts keys and lists those with count > 1 and their row numbers; click a key to filter to those rows | M1 |
+| 15 | Data quality report | Runs 13 + 14 + bad-row detection over all columns, shows a summary table and exports it as CSV | M2 |
+
+### D. Multiple files
+
+| # | Feature | Design | M |
+|---|---|---|---|
+| 16 | Compare two CSVs | Pick two files and a key column; the worker indexes both by key (hash → row offset), reports added / removed / changed rows and which cells differ; side-by-side diff view with changed cells highlighted; export the report | M3 |
+| 17 | Merge, append, join | Append files with matching headers (map columns by name); join on a key column (left/inner), streamed to a new file | M3 |
+| 18 | Split | By row count, by file size, or by column value (one file per distinct value, capped at 500 files with a warning); header repeated in each part; streamed | M2 |
+| 19 | Folder-wide search | Search a value (modes as §3.3) across all CSVs in a folder; results grouped by file with row numbers; click opens the viewer at that row | M3 |
+
+### E. Viewing and export
+
+| # | Feature | Design | M |
+|---|---|---|---|
+| 20 | Export formats | Current view (filtered, visible columns) to CSV, JSON, JSONL, SQL INSERT (table name prompt, escaping by dialect), Markdown table, XLSX (via a small writer, sheet limit 1,048,576 rows with a split warning). Streamed to a file | M2 |
+| 21 | Bookmarks and recent files | Bookmark rows (stored per file in workspace state, with an optional note); "Recent CSV files" list reopens at the last viewed row | M3 |
+| 22 | Mask columns | Toggle per column (email, phone, or custom regex); masked with `••••` in the renderer, copy and record view; one switch masks all flagged columns for screen sharing | M3 |
+
+### Dependencies between features
+
+- 12 (types) feeds the column picker icons (§4.3) and masking suggestions (22).
+- 13 (stats) feeds "Hide empty columns" (§4.3) and 15.
+- 1 (presets) bundles 2-5 and column sets (§4.3).
+- 20 (export) is also required by 14, 15 and 16 for exporting their results, so build it before them.

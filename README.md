@@ -1,4 +1,4 @@
-# Get Unique Values & CSV Viewer
+# Data Toolkit
 
 Two tools in one extension:
 

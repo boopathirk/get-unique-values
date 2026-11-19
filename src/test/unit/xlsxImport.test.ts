@@ -77,6 +77,42 @@ suite('xlsx import', () => {
         assert.strictEqual(fs.readFileSync(out, 'utf8'), 'z\n');
     });
 
+    test('a title row narrower than the table: every row is padded to the widest row', async () => {
+        const titled = path.join(dir, 'titled.xlsx');
+        const wb = new ExcelJS.Workbook();
+        const ws = wb.addWorksheet('Report');
+        ws.addRow(['Sales report 2024']);
+        ws.addRow(['sku', 'name', 'qty']);
+        ws.addRow(['A1', 'two\nlines, "q"', 3]);
+        ws.addRow(['A2']);
+        ws.addRow(['A3', 'x', 5, 'extra']);
+        await wb.xlsx.writeFile(titled);
+        const sub = fs.mkdtempSync(path.join(dir, 'titled-'));
+        const out = path.join(sub, 't.csv');
+        assert.strictEqual(await convertSheetToCsv(titled, 0, out, live(), noop), 4);
+        assert.strictEqual(
+            fs.readFileSync(out, 'utf8'),
+            'Sales report 2024,,,\nsku,name,qty,\nA1,"two\nlines, ""q""",3,\nA2,,,\nA3,x,5,extra\n',
+        );
+        assert.deepStrictEqual(fs.readdirSync(sub), ['t.csv'], 'no temp files are left behind');
+    });
+
+    test('padding a large sheet copies the body intact', async () => {
+        const big = path.join(dir, 'big.xlsx');
+        const wb = new ExcelJS.Workbook();
+        const ws = wb.addWorksheet('Big');
+        ws.addRow(['title']);
+        const expected = ['title,,'];
+        for (let i = 0; i < 12000; i++) {
+            ws.addRow(i % 7 === 0 ? [`r${i}`] : [`r${i}`, `multi\nline ${i} é`, i]);
+            expected.push(i % 7 === 0 ? `r${i},,` : `r${i},"multi\nline ${i} é",${i}`);
+        }
+        await wb.xlsx.writeFile(big);
+        const out = path.join(dir, 'big.csv');
+        assert.strictEqual(await convertSheetToCsv(big, 0, out, live(), noop), 12000);
+        assert.strictEqual(fs.readFileSync(out, 'utf8'), `${expected.join('\n')}\n`);
+    });
+
     test('unknown sheet index rejects', async () => {
         await assert.rejects(() => convertSheetToCsv(book, 5, path.join(dir, 'x.csv'), live(), noop));
     });

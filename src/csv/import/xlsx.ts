@@ -1,7 +1,7 @@
 /*
  * Excel to CSV conversion limits:
  *  - Fully empty rows are skipped by the streaming reader.
- *  - Rows are padded to the first row's width; longer rows are kept as they are.
+ *  - Every row is padded to the widest row's width (a narrow title row in A1 does not hide the table).
  *  - Inline rich text from stream-written files may lose its leading runs (an ExcelJS reader limitation).
  */
 import * as fs from 'fs';
@@ -67,12 +67,67 @@ function closeReader(reader: unknown): void {
 export async function listSheets(file: string): Promise<string[]> {
     const names: string[] = [];
     const reader = new ExcelJS.stream.xlsx.WorkbookReader(file, READER_OPTIONS);
-    for await (const ws of reader) {
-        names.push((ws as unknown as { name: string }).name);
-        discard(ws);
+    try {
+        for await (const ws of reader) {
+            names.push((ws as unknown as { name: string }).name);
+            discard(ws);
+        }
+    } finally {
+        closeReader(reader);
     }
-    closeReader(reader);
     return names;
+}
+
+/**
+ * Copy the CSV `body` to `out`, appending empty fields so every row has `width` fields.
+ * `lineBytes[i]` is the byte length of row i including its final newline (quoted fields may contain
+ * newlines, so rows cannot be found by scanning); `cells[i]` is its field count.
+ */
+async function padRows(
+    body: string,
+    out: string,
+    lineBytes: number[],
+    cells: number[],
+    width: number,
+    token: CancelToken,
+): Promise<boolean> {
+    const input = fs.createReadStream(body, { highWaterMark: 1 << 20 });
+    const output = fs.createWriteStream(out);
+    output.on('error', () => undefined); // surfaced by the write callbacks
+    const write = (chunk: Buffer): Promise<void> =>
+        new Promise<void>((resolve, reject) => output.write(chunk, (err) => (err ? reject(err) : resolve())));
+    let row = 0;
+    let remaining = lineBytes[0] ?? 0;
+    try {
+        for await (const chunk of input as AsyncIterable<Buffer>) {
+            if (token.cancelled) {
+                return false;
+            }
+            const pieces: Buffer[] = [];
+            let off = 0;
+            while (off < chunk.length && row < lineBytes.length) {
+                const take = Math.min(remaining, chunk.length - off);
+                const ends = take === remaining;
+                const contentEnd = ends ? off + take - 1 : off + take; // drop the row's newline, re-added after the padding
+                if (contentEnd > off) {
+                    pieces.push(chunk.subarray(off, contentEnd));
+                }
+                off += take;
+                remaining -= take;
+                if (ends) {
+                    pieces.push(Buffer.from(`${','.repeat(Math.max(0, width - cells[row]))}\n`));
+                    row++;
+                    remaining = lineBytes[row] ?? 0;
+                }
+            }
+            await write(Buffer.concat(pieces));
+        }
+        await new Promise<void>((resolve) => output.end(resolve));
+        return true;
+    } finally {
+        input.destroy();
+        output.destroy();
+    }
 }
 
 export async function convertSheetToCsv(
@@ -83,6 +138,7 @@ export async function convertSheetToCsv(
     onProgress: (rows: number) => void,
 ): Promise<number | null> {
     const tmp = `${outPath}.${process.pid}.${randomBytes(4).toString('hex')}.tmp`;
+    const padded = `${tmp}.padded`;
     const out = fs.createWriteStream(tmp);
     await new Promise<void>((resolve, reject) => {
         out.once('open', () => resolve());
@@ -94,6 +150,7 @@ export async function convertSheetToCsv(
     const cleanup = async (): Promise<void> => {
         out.destroy();
         await fs.promises.rm(tmp, { force: true });
+        await fs.promises.rm(padded, { force: true });
     };
     try {
         let current = -1;
@@ -101,6 +158,11 @@ export async function convertSheetToCsv(
         let width = 0;
         let lines = 0;
         let buffer: string[] = [];
+        // Per row: byte length (with newline) and field count, so rows narrower than the widest row can be
+        // padded afterwards. Bounded by Excel's row limit (~1M rows, a few MB).
+        const lineBytes: number[] = [];
+        const cells: number[] = [];
+        let ragged = false;
         const reader = new ExcelJS.stream.xlsx.WorkbookReader(file, READER_OPTIONS);
         let chosen: unknown;
         let cancelled = false;
@@ -119,14 +181,15 @@ export async function convertSheetToCsv(
                         cancelled = true;
                         break;
                     }
-                    const cells = (row.values as unknown[]).slice(1).map(cellText);
-                    if (lines === 0) {
-                        width = cells.length;
+                    const values = (row.values as unknown[]).slice(1).map(cellText);
+                    if (lines > 0 && values.length !== width) {
+                        ragged = true;
                     }
-                    while (cells.length < width) {
-                        cells.push('');
-                    }
-                    buffer.push(`${cells.map((c) => csvField(c, ',')).join(',')}\n`);
+                    width = Math.max(width, values.length);
+                    const line = `${values.map((c) => csvField(c, ',')).join(',')}\n`;
+                    lineBytes.push(Buffer.byteLength(line));
+                    cells.push(values.length);
+                    buffer.push(line);
                     lines++;
                     if (buffer.length >= 5000) {
                         await write(buffer.join(''));
@@ -151,14 +214,23 @@ export async function convertSheetToCsv(
             await write(buffer.join(''));
         }
         await new Promise<void>((resolve) => out.end(resolve));
+        let result = tmp;
+        if (ragged) {
+            if (!(await padRows(tmp, padded, lineBytes, cells, width, token))) {
+                await cleanup();
+                return null;
+            }
+            await fs.promises.rm(tmp, { force: true });
+            result = padded;
+        }
         try {
-            await fs.promises.rename(tmp, outPath);
+            await fs.promises.rename(result, outPath);
         } catch (err) {
             // Another conversion of the same sheet may have won the race.
             if (!fs.existsSync(outPath)) {
                 throw err;
             }
-            await fs.promises.rm(tmp, { force: true });
+            await fs.promises.rm(result, { force: true });
         }
         const rows = Math.max(0, lines - 1);
         onProgress(rows);

@@ -34,6 +34,10 @@ Open a file with **right-click → Open in CSV Viewer**, the button in the edito
 | Show / hide columns | Column picker with search, show all / hide all / invert, drag to reorder, *Hide empty*, *Only filtered*, name-pattern filter, saved column sets, pin the first N columns, resize by dragging. Everything is remembered per file. |
 | Bad rows | Rows whose column count differs from the first row are counted; click the warning in the status bar to list just them. |
 | Auto-detect | Delimiter, header row and encoding (UTF-8 / Latin-1) are detected; click the chip in the toolbar to override. |
+| Column types | Each column's detected type is shown as a hint in the header tooltip. |
+| Column stats | Column menu → *Column stats*: empty %, distinct count, min / max, lengths and sample values. |
+| Find duplicates | Column menu → *Find duplicates*: lists repeated values; click a value to filter the table to its rows. |
+| Large-file prompt | Opening a CSV above `getUniqueValues.csv.largeFileMB` offers to open it in the CSV Viewer. |
 | Copy | Copy a cell, or a row as CSV or JSON. |
 
 Keyboard: arrows move the cell, `PageUp`/`PageDown` change page, `Ctrl+F` search, `Enter` cell detail, `Shift+Enter` record view, `Ctrl+C` copy cell, `Ctrl+Shift+H` hide column, `Ctrl+Shift+U` show all columns, `Esc` close panel.

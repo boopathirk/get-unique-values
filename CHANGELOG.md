@@ -2,6 +2,14 @@
 
 All notable changes to the "get-unique-values" extension are documented in this file.
 
+## [0.1.2]
+
+### Added
+- Column type detection, shown as a hint in the column header tooltip.
+- **Column stats** panel: empty %, distinct count, min / max, lengths and samples for a column (column menu).
+- **Find duplicates**: scan a column for repeated values; click a value to filter the table to its rows.
+- Large-file prompt: opening a CSV above the `getUniqueValues.csv.largeFileMB` size offers to open it in the CSV Viewer.
+
 ## [0.1.1]
 
 ### Changed

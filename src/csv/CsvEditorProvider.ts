@@ -1,7 +1,10 @@
 import * as vscode from 'vscode';
+import * as fs from 'fs';
+import * as path from 'path';
 import { CsvSession } from './CsvSession';
 
 export const VIEW_TYPE = 'getUniqueValues.csvViewer';
+export const XLSX_VIEW_TYPE = 'getUniqueValues.xlsxViewer';
 
 export interface CsvViewerApi {
     sessions: Map<string, CsvSession>;
@@ -44,25 +47,41 @@ export function registerCsvViewer(context: vscode.ExtensionContext): CsvViewerAp
         },
     };
 
+    // Best-effort: drop cached Excel conversions older than 7 days.
+    void (async () => {
+        const dir = path.join(context.globalStorageUri.fsPath, 'xlsx');
+        try {
+            for (const f of await fs.promises.readdir(dir)) {
+                const p = path.join(dir, f);
+                if (Date.now() - (await fs.promises.stat(p)).mtimeMs > 7 * 86_400_000) {
+                    await fs.promises.rm(p, { force: true });
+                }
+            }
+        } catch { /* no cache yet */ }
+    })();
+
+    const editorOptions = {
+        supportsMultipleEditorsPerDocument: false,
+        webviewOptions: { retainContextWhenHidden: true },
+    };
     context.subscriptions.push(
-        vscode.window.registerCustomEditorProvider(VIEW_TYPE, provider, {
-            supportsMultipleEditorsPerDocument: false,
-            webviewOptions: { retainContextWhenHidden: true },
-        }),
+        vscode.window.registerCustomEditorProvider(VIEW_TYPE, provider, editorOptions),
+        vscode.window.registerCustomEditorProvider(XLSX_VIEW_TYPE, provider, editorOptions),
         vscode.commands.registerCommand('get-unique-values.openCsvViewer', async (uri?: vscode.Uri) => {
             const target = uri ?? vscode.window.activeTextEditor?.document.uri;
             if (!target) {
                 void vscode.window.showInformationMessage('Open a CSV file first.');
                 return;
             }
-            if (!/\.(csv|tsv|psv)$/i.test(target.path)) {
-                void vscode.window.showInformationMessage('The CSV Viewer opens .csv, .tsv and .psv files.');
+            if (!/\.(csv|tsv|psv|xlsx|xlsm)$/i.test(target.path)) {
+                void vscode.window.showInformationMessage('The CSV Viewer opens .csv, .tsv, .psv and Excel (.xlsx, .xlsm) files.');
                 return;
             }
-            await vscode.commands.executeCommand('vscode.openWith', target, VIEW_TYPE);
+            await vscode.commands.executeCommand('vscode.openWith', target, /\.xls[xm]$/i.test(target.path) ? XLSX_VIEW_TYPE : VIEW_TYPE);
         }),
         vscode.commands.registerCommand('get-unique-values.csv.hideSelectedColumn', () => activeSession?.sendCommand('hideSelectedColumn')),
         vscode.commands.registerCommand('get-unique-values.csv.showAllColumns', () => activeSession?.sendCommand('showAllColumns')),
+        vscode.commands.registerCommand('get-unique-values.csv.chooseSheet', () => activeSession?.chooseSheet()),
         vscode.commands.registerCommand('get-unique-values.csv.export', () => activeSession?.sendCommand('export')),
     );
 

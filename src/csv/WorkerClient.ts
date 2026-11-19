@@ -1,8 +1,8 @@
 import { Worker } from 'worker_threads';
-import type { ExportProgress, FilterProgress, IndexProgress } from './types';
+import type { ExportProgress, FilterProgress, ImportProgress, IndexProgress } from './types';
 import type { RequestBody, WorkerMessage, WorkerRequest } from './protocol';
 
-type Progress = IndexProgress | FilterProgress | ExportProgress;
+type Progress = IndexProgress | FilterProgress | ExportProgress | ImportProgress;
 
 interface Pending {
     resolve: (value: unknown) => void;

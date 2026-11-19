@@ -1,13 +1,14 @@
 import * as vscode from 'vscode';
+import * as fs from 'fs';
 import * as path from 'path';
-import { randomBytes } from 'crypto';
+import { createHash, randomBytes } from 'crypto';
 import { WorkerClient } from './WorkerClient';
 import { PAGE_SIZES, headerHash, sanitizeLayout } from './core/layout';
 import type { ColorMode, LongText } from './core/layout';
 import type { Predicate } from './core/predicates';
 import type { HostToView, ViewCommand, ViewToHost, ViewerSettings } from './protocol';
 import type {
-    ColumnStats, DuplicateResult, ExportFormat, ExportOptions, ExportProgress, ExportResult, FileInfo, FilterProgress, FilterResult, IndexProgress, OpenResult, PageResult, ParseOptions, UniqueResult,
+    ColumnStats, DuplicateResult, ExportFormat, ExportOptions, ExportProgress, ExportResult, FileInfo, FilterProgress, FilterResult, ImportProgress, IndexProgress, OpenResult, PageResult, ParseOptions, UniqueResult,
 } from './types';
 import { XLSX_MAX_ROWS } from './types';
 
@@ -57,6 +58,8 @@ export class CsvSession implements vscode.Disposable {
     private parseOptions: ParseOptions;
     private info: FileInfo | undefined;
     private openGen = 0;
+    private sheet: number | undefined;
+    private sheetName = '';
     private lastError: { gen: number; message: string; retry: boolean } | undefined;
 
     /** Most recent page sent to the webview (read by the integration test). */
@@ -196,8 +199,12 @@ export class CsvSession implements vscode.Disposable {
         this.analysisJobs.clear();
         this.activeFilter = undefined;
         try {
+            const source = await this.resolveSource(gen);
+            if (source === undefined || gen !== this.openGen) {
+                return;
+            }
             const { promise } = this.worker.request<OpenResult>(
-                { type: 'open', path: this.uri.fsPath, options: this.parseOptions },
+                { type: 'open', path: source.path, options: source.options },
                 (p) => {
                     if (gen === this.openGen) {
                         this.post({ type: 'indexProgress', progress: p as IndexProgress });
@@ -219,13 +226,79 @@ export class CsvSession implements vscode.Disposable {
                 result.info.columnCount,
                 { pageSize: settings.defaultPageSize, longText: settings.longText, colorMode: settings.columnColors },
             );
-            this.post({ type: 'opened', info: result.info, layout, settings, fileName: path.basename(this.uri.fsPath) });
+            this.post({ type: 'opened', info: result.info, layout, settings, fileName: source.label });
         } catch (err) {
             if (gen !== this.openGen) {
                 return;
             }
             this.post({ type: 'status', kind: 'error', message: errorMessage(err) });
         }
+    }
+
+    /** The CSV file to open: the file itself, or the cached CSV conversion of the chosen Excel sheet. */
+    private async resolveSource(gen: number): Promise<{ path: string; options: ParseOptions; label: string } | undefined> {
+        const file = this.uri.fsPath;
+        const base = path.basename(file);
+        if (!/\.xls[xm]$/i.test(file)) {
+            return { path: file, options: this.parseOptions, label: base };
+        }
+        const sheets = await this.worker.request<string[]>({ type: 'xlsxSheets', path: file }).promise;
+        if (gen !== this.openGen) {
+            return undefined;
+        }
+        if (sheets.length === 0) {
+            this.post({ type: 'status', kind: 'error', message: 'This workbook has no sheets.' });
+            return undefined;
+        }
+        if (this.sheet === undefined || this.sheet >= sheets.length) {
+            if (sheets.length === 1) {
+                this.sheet = 0;
+            } else {
+                const pick = await vscode.window.showQuickPick<Item<number>>(
+                    sheets.map((name, i) => ({ label: name, value: i })),
+                    { title: `Choose a sheet from ${base}`, placeHolder: 'Sheet' },
+                );
+                if (gen !== this.openGen) {
+                    return undefined;
+                }
+                if (!pick) {
+                    this.post({ type: 'status', kind: 'error', message: 'No sheet chosen. Run "CSV Viewer: Choose Excel Sheet…" to pick one.' });
+                    return undefined;
+                }
+                this.sheet = pick.value;
+            }
+        }
+        const sheetIndex = this.sheet;
+        this.sheetName = sheets[sheetIndex];
+        const stat = await fs.promises.stat(file);
+        const hash = createHash('sha1').update(`${file}|${stat.mtimeMs}|${stat.size}|${sheetIndex}`).digest('hex').slice(0, 24);
+        const cacheDir = path.join(this.context.globalStorageUri.fsPath, 'xlsx');
+        await fs.promises.mkdir(cacheDir, { recursive: true });
+        const out = path.join(cacheDir, `${hash}.csv`);
+        if (!fs.existsSync(out)) {
+            const rows = await vscode.window.withProgress(
+                { location: vscode.ProgressLocation.Notification, title: `Reading ${base} (${this.sheetName})`, cancellable: true },
+                async (progress, cancelToken) => {
+                    const { id, promise } = this.worker.request<number | null>(
+                        { type: 'xlsxConvert', path: file, sheet: sheetIndex, out },
+                        (p) => progress.report({ message: `${(p as ImportProgress).rows.toLocaleString()} rows` }),
+                    );
+                    cancelToken.onCancellationRequested(() => this.worker.cancel(id));
+                    return promise;
+                },
+            );
+            if (rows === null) {
+                this.post({ type: 'status', kind: 'error', message: 'Reading the Excel file was cancelled. Reload to try again.' });
+                return undefined;
+            }
+        }
+        return { path: out, options: { ...this.parseOptions, delimiter: ',', encoding: 'utf-8' }, label: `${base} \u2014 ${this.sheetName}` };
+    }
+
+    /** Forget the chosen sheet and reopen (command "CSV Viewer: Choose Excel Sheet\u2026"). */
+    async chooseSheet(): Promise<void> {
+        this.sheet = undefined;
+        await this.openFile();
     }
 
     private async sendPage(reqId: number, page: number, pageSize: number): Promise<void> {

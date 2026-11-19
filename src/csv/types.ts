@@ -117,6 +117,11 @@ export interface DuplicateResult {
     capped: boolean;
 }
 
+/** Progress of an Excel-to-CSV conversion. */
+export interface ImportProgress {
+    rows: number;
+}
+
 export interface ExportProgress {
     done: number;
     total: number;

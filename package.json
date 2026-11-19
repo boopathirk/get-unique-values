@@ -44,6 +44,10 @@
       {
         "command": "get-unique-values.csv.export",
         "title": "CSV Viewer: Export…"
+      },
+      {
+        "command": "get-unique-values.csv.chooseSheet",
+        "title": "CSV Viewer: Choose Excel Sheet…"
       }
     ],
     "keybindings": [
@@ -57,13 +61,13 @@
         "command": "get-unique-values.csv.hideSelectedColumn",
         "key": "ctrl+shift+h",
         "mac": "cmd+shift+h",
-        "when": "activeCustomEditorId == 'getUniqueValues.csvViewer'"
+        "when": "activeCustomEditorId == 'getUniqueValues.csvViewer' || activeCustomEditorId == 'getUniqueValues.xlsxViewer'"
       },
       {
         "command": "get-unique-values.csv.showAllColumns",
         "key": "ctrl+shift+u",
         "mac": "cmd+shift+u",
-        "when": "activeCustomEditorId == 'getUniqueValues.csvViewer'"
+        "when": "activeCustomEditorId == 'getUniqueValues.csvViewer' || activeCustomEditorId == 'getUniqueValues.xlsxViewer'"
       }
     ],
     "menus": {
@@ -76,14 +80,14 @@
       "editor/title": [
         {
           "command": "get-unique-values.openCsvViewer",
-          "when": "resourceExtname =~ /^\\.(csv|tsv|psv)$/ && activeCustomEditorId != 'getUniqueValues.csvViewer'",
+          "when": "resourceExtname =~ /^\\.(csv|tsv|psv|xlsx|xlsm)$/ && activeCustomEditorId != 'getUniqueValues.csvViewer' && activeCustomEditorId != 'getUniqueValues.xlsxViewer'",
           "group": "navigation"
         }
       ],
       "explorer/context": [
         {
           "command": "get-unique-values.openCsvViewer",
-          "when": "resourceExtname =~ /^\\.(csv|tsv|psv)$/",
+          "when": "resourceExtname =~ /^\\.(csv|tsv|psv|xlsx|xlsm)$/",
           "group": "navigation"
         }
       ],
@@ -98,11 +102,15 @@
         },
         {
           "command": "get-unique-values.csv.export",
-          "when": "activeCustomEditorId == 'getUniqueValues.csvViewer'"
+          "when": "activeCustomEditorId == 'getUniqueValues.csvViewer' || activeCustomEditorId == 'getUniqueValues.xlsxViewer'"
+        },
+        {
+          "command": "get-unique-values.csv.chooseSheet",
+          "when": "activeCustomEditorId == 'getUniqueValues.xlsxViewer'"
         },
         {
           "command": "get-unique-values.openCsvViewer",
-          "when": "resourceExtname =~ /^\\.(csv|tsv|psv)$/"
+          "when": "resourceExtname =~ /^\\.(csv|tsv|psv|xlsx|xlsm)$/"
         }
       ]
     },
@@ -120,6 +128,19 @@
           },
           {
             "filenamePattern": "*.psv"
+          }
+        ]
+      },
+      {
+        "viewType": "getUniqueValues.xlsxViewer",
+        "displayName": "Excel Viewer",
+        "priority": "default",
+        "selector": [
+          {
+            "filenamePattern": "*.xlsx"
+          },
+          {
+            "filenamePattern": "*.xlsm"
           }
         ]
       }

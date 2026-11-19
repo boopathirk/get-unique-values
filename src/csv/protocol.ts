@@ -1,7 +1,7 @@
 import type { Predicate } from './core/predicates';
 import type { ColorMode, Layout, LongText } from './core/layout';
 import type {
-    ColumnStats, DuplicateResult, ExportOptions, ExportProgress, FileInfo, FilterProgress, FilterResult, IndexProgress, PageResult, ParseOptions, UniqueResult,
+    ColumnStats, DuplicateResult, ExportOptions, ExportProgress, FileInfo, FilterProgress, FilterResult, ImportProgress, IndexProgress, PageResult, ParseOptions, UniqueResult,
 } from './types';
 
 // ---- host <-> worker ------------------------------------------------------
@@ -15,12 +15,14 @@ export type WorkerRequest =
     | { id: number; type: 'duplicates'; columns: number[] }
     | { id: number; type: 'nonEmptyColumns' }
     | { id: number; type: 'export'; options: ExportOptions }
+    | { id: number; type: 'xlsxSheets'; path: string }
+    | { id: number; type: 'xlsxConvert'; path: string; sheet: number; out: string }
     | { id: number; type: 'cancel'; target: number };
 
 export type WorkerMessage =
     | { type: 'result'; id: number; data: unknown }
     | { type: 'failure'; id: number; message: string }
-    | { type: 'progress'; id: number; data: IndexProgress | FilterProgress | ExportProgress }
+    | { type: 'progress'; id: number; data: IndexProgress | FilterProgress | ExportProgress | ImportProgress }
     | { type: 'fatal'; message: string };
 
 /** A request without its id (the client assigns it). */

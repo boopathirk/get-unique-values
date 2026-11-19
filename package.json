@@ -18,15 +18,16 @@
     "clean",
     "format"
   ],
-  "activationEvents": [
-    "onStartupFinished"
-  ],
   "main": "./out/extension.js",
   "contributes": {
     "commands": [
       {
         "command": "get-unique-values.run",
         "title": "Get Unique Values (Remove Duplicates & Empty Lines)"
+      },
+      {
+        "command": "get-unique-values.openCsvViewer",
+        "title": "Open in CSV Viewer"
       }
     ],
     "keybindings": [
@@ -43,7 +44,82 @@
           "command": "get-unique-values.run",
           "group": "modification"
         }
+      ],
+      "editor/title": [
+        {
+          "command": "get-unique-values.openCsvViewer",
+          "when": "resourceExtname =~ /^\\.(csv|tsv|psv)$/",
+          "group": "navigation"
+        }
+      ],
+      "explorer/context": [
+        {
+          "command": "get-unique-values.openCsvViewer",
+          "when": "resourceExtname =~ /^\\.(csv|tsv|psv)$/",
+          "group": "navigation"
+        }
       ]
+    },
+    "customEditors": [
+      {
+        "viewType": "getUniqueValues.csvViewer",
+        "displayName": "CSV Viewer",
+        "priority": "option",
+        "selector": [
+          {
+            "filenamePattern": "*.csv"
+          },
+          {
+            "filenamePattern": "*.tsv"
+          },
+          {
+            "filenamePattern": "*.psv"
+          }
+        ]
+      }
+    ],
+    "configuration": {
+      "title": "CSV Viewer",
+      "properties": {
+        "getUniqueValues.csv.defaultPageSize": {
+          "type": "number",
+          "enum": [
+            50,
+            100,
+            250,
+            500,
+            1000
+          ],
+          "default": 100,
+          "description": "Rows per page in the CSV Viewer."
+        },
+        "getUniqueValues.csv.columnColors": {
+          "type": "string",
+          "enum": [
+            "header",
+            "headerAndCells",
+            "off"
+          ],
+          "default": "headerAndCells",
+          "description": "Give every column its own colour: header only, header plus a tinted cell edge, or off."
+        },
+        "getUniqueValues.csv.longText": {
+          "type": "string",
+          "enum": [
+            "truncate",
+            "wrap",
+            "full"
+          ],
+          "default": "truncate",
+          "description": "How long cell values are shown: one truncated line, up to 3 wrapped lines, or in full."
+        },
+        "getUniqueValues.csv.defaultColumnWidth": {
+          "type": "number",
+          "default": 300,
+          "minimum": 80,
+          "description": "Default column width in pixels."
+        }
+      }
     }
   },
   "scripts": {

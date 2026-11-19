@@ -280,3 +280,16 @@ Milestone: **M1** = right after v0.1.0 core, **M2** = v0.2.0, **M3** = v0.3.0. A
 - 13 (stats) feeds "Hide empty columns" (§4.3) and 15.
 - 1 (presets) bundles 2-5 and column sets (§4.3).
 - 20 (export) is also required by 14, 15 and 16 for exporting their results, so build it before them.
+
+## 9. Implementation notes for v0.1.0
+
+Where this section disagrees with §2-§6, this section wins.
+
+1. **Source layout.** Webview sources are in `src/viewer/` (only `viewer.css` is in `media/`). Shared pure types are in `src/csv/types.ts`. The core also contains `engine.ts` (index, paging, filter, unique, empty-column scan), `predicates.ts` (replaces `scanner.ts`), `layout.ts`, `colors.ts` and `textUtil.ts`; `WorkerClient.ts` wraps the worker.
+2. **UTF-16** files are detected (BOM) but show an "unsupported encoding" message in v0.1.0; support lands with M2 (§8.6).
+3. **No page LRU cache** (§3.2): one page is a single `fs.read`.
+4. **Unique panel** renders at most 500 rows at a time; its search box narrows them. The worker still returns up to 100,000 distinct values.
+5. **"Only filtered" column toggle** keeps columns that have a column filter or are the search column (not columns with a search hit).
+6. **Perf script** (`npm run perf -- 300 mixed|narrow`) uses two shapes: *mixed* (20 columns, 1-4 KB HTML description with quotes and newlines on every 10th row, about 700k rows at 300 MB) and *narrow* (short rows, about 1.5M rows). "1.5M rows × 1-4 KB" cannot fit in 300 MB.
+7. **Unclosed quote** recovery rewinds to the opening quote and ignores quotes until the end of that line; the row is then shown split on the delimiter.
+8. **Blank lines** are never rows.

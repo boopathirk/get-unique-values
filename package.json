@@ -1,9 +1,9 @@
 {
   "name": "get-unique-values",
-  "displayName": "get-unique-values",
+  "displayName": "Get Unique Values & CSV Viewer",
   "publisher": "boopathi08",
-  "description": "Remove duplicate lines from the file or selection",
-  "version": "0.0.1",
+  "description": "Remove duplicate lines, and view huge CSV files fast: pagination, search, unique values per column, filters, column colours.",
+  "version": "0.1.0",
   "engines": {
     "vscode": "^1.99.0"
   },
@@ -16,7 +16,11 @@
     "duplicate",
     "remove duplicates",
     "clean",
-    "format"
+    "format",
+    "csv",
+    "csv viewer",
+    "large csv",
+    "tsv"
   ],
   "main": "./out/extension.js",
   "contributes": {

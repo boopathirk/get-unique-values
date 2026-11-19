@@ -1,3 +1,4 @@
+import type { TextFormat } from './core/formats';
 // Pure shared types: safe to import from the extension host, worker and webview.
 
 export type Encoding = 'utf-8' | 'latin1' | 'utf-16le' | 'utf-16be';
@@ -120,3 +121,22 @@ export interface ExportProgress {
     done: number;
     total: number;
 }
+
+export type ExportFormat = TextFormat | 'xlsx';
+
+export interface ExportOptions {
+    format: ExportFormat;
+    scope: 'view' | 'all';
+    columns: number[];
+    outPath: string;
+    table?: string;
+    sheetName?: string;
+}
+
+export interface ExportResult {
+    rows: number;
+    truncated: boolean;
+    path: string;
+}
+
+export const XLSX_MAX_ROWS = 1_048_576;

@@ -1,6 +1,6 @@
 import type { ThemeKind } from '../csv/core/colors';
 import type { HostToView } from '../csv/protocol';
-import { emit, loadPage } from './actions';
+import { emit, loadPage, requestExport } from './actions';
 import { mountBanner } from './banner';
 import { closePicker, mountColumnPicker } from './columnPicker';
 import { h } from './dom';
@@ -161,6 +161,8 @@ window.addEventListener('message', (event: MessageEvent<HostToView>) => {
                 if (state.selected) {
                     hideColumn(state.selected.col);
                 }
+            } else if (m.name === 'export') {
+                requestExport();
             } else {
                 showAll();
             }

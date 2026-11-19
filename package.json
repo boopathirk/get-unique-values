@@ -40,6 +40,10 @@
       {
         "command": "get-unique-values.csv.showAllColumns",
         "title": "CSV Viewer: Show All Columns"
+      },
+      {
+        "command": "get-unique-values.csv.export",
+        "title": "CSV Viewer: Export…"
       }
     ],
     "keybindings": [

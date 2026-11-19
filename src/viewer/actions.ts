@@ -1,3 +1,4 @@
+import { visibleColumns } from '../csv/core/layout';
 import { buildPredicates, post, state } from './state';
 
 const bus = new EventTarget();
@@ -89,4 +90,11 @@ export function saveLayout(): void {
         post({ type: 'saveLayout', layout: state.layout });
     }
     emit('render');
+}
+
+export function requestExport(): void {
+    const layout = state.layout;
+    if (layout) {
+        post({ type: 'export', columns: visibleColumns(layout) });
+    }
 }

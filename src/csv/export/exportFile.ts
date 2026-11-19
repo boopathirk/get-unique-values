@@ -1,28 +1,12 @@
 import * as fs from 'fs';
 import ExcelJS from 'exceljs';
 import { createFormatter } from '../core/formats';
-import type { TextFormat } from '../core/formats';
 import type { CsvEngine } from '../core/engine';
-import type { CancelToken } from '../types';
+import type { CancelToken, ExportFormat, ExportOptions, ExportResult } from '../types';
+import { XLSX_MAX_ROWS } from '../types';
 
-export type ExportFormat = TextFormat | 'xlsx';
-
-export interface ExportOptions {
-    format: ExportFormat;
-    scope: 'view' | 'all';
-    columns: number[];
-    outPath: string;
-    table?: string;
-    sheetName?: string;
-}
-
-export interface ExportResult {
-    rows: number;
-    truncated: boolean;
-    path: string;
-}
-
-export const XLSX_MAX_ROWS = 1_048_576;
+export type { ExportFormat, ExportOptions, ExportResult } from '../types';
+export { XLSX_MAX_ROWS } from '../types';
 
 /** Plain numbers become numeric cells; anything that could lose information (leading zeros, 16+ digits, exponents) stays text. */
 export function xlsxValue(v: string): string | number {

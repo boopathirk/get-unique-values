@@ -7,8 +7,13 @@ import type { ColorMode, LongText } from './core/layout';
 import type { Predicate } from './core/predicates';
 import type { HostToView, ViewCommand, ViewToHost, ViewerSettings } from './protocol';
 import type {
-    ColumnStats, DuplicateResult, FileInfo, FilterProgress, FilterResult, IndexProgress, OpenResult, PageResult, ParseOptions, UniqueResult,
+    ColumnStats, DuplicateResult, ExportFormat, ExportOptions, ExportProgress, ExportResult, FileInfo, FilterProgress, FilterResult, IndexProgress, OpenResult, PageResult, ParseOptions, UniqueResult,
 } from './types';
+import { XLSX_MAX_ROWS } from './types';
+
+const EXPORT_EXTENSIONS: Record<ExportFormat, string> = {
+    csv: 'csv', xlsx: 'xlsx', json: 'json', jsonl: 'jsonl', tsv: 'tsv', sql: 'sql', markdown: 'md',
+};
 
 function errorMessage(err: unknown): string {
     return err instanceof Error ? err.message : String(err);
@@ -162,6 +167,9 @@ export class CsvSession implements vscode.Disposable {
                     (err) => this.postError(errorMessage(err)),
                 );
                 break;
+            case 'export':
+                await this.exportData(m.columns);
+                break;
             case 'chooseParseOptions':
                 await this.chooseParseOptions();
                 break;
@@ -287,6 +295,94 @@ export class CsvSession implements vscode.Disposable {
                     this.uniqueJobs.delete(jobId);
                 }
             });
+    }
+
+    private async exportData(viewColumns: number[]): Promise<void> {
+        const info = this.info;
+        if (!info) {
+            return;
+        }
+        const format = await vscode.window.showQuickPick<Item<ExportFormat>>(
+            [
+                { label: 'CSV', description: '.csv', value: 'csv' },
+                { label: 'Excel', description: '.xlsx (numbers stay numbers, up to 1,048,575 rows)', value: 'xlsx' },
+                { label: 'JSON', description: '.json array of objects', value: 'json' },
+                { label: 'JSON Lines', description: '.jsonl, one object per line', value: 'jsonl' },
+                { label: 'TSV', description: '.tsv', value: 'tsv' },
+                { label: 'SQL INSERT', description: '.sql', value: 'sql' },
+                { label: 'Markdown table', description: '.md', value: 'markdown' },
+            ],
+            { title: 'Export format' },
+        );
+        if (!format) {
+            return;
+        }
+        const scope = await vscode.window.showQuickPick<Item<'view' | 'all'>>(
+            [
+                { label: 'Current view', description: 'filtered rows, visible columns', value: 'view' },
+                { label: 'Whole file', description: 'every row and every column', value: 'all' },
+            ],
+            { title: 'What to export' },
+        );
+        if (!scope) {
+            return;
+        }
+        let table: string | undefined;
+        if (format.value === 'sql') {
+            table = await vscode.window.showInputBox({
+                title: 'SQL table name',
+                value: path.basename(this.uri.fsPath).replace(/\.[^.]+$/, '').replace(/[^A-Za-z0-9_]/g, '_') || 'data',
+            });
+            if (table === undefined) {
+                return;
+            }
+        }
+        const ext = EXPORT_EXTENSIONS[format.value];
+        const base = path.basename(this.uri.fsPath).replace(/\.[^.]+$/, '');
+        const target = await vscode.window.showSaveDialog({
+            defaultUri: vscode.Uri.file(path.join(path.dirname(this.uri.fsPath), `${base}.${ext}`)),
+            filters: { [format.label]: [ext] },
+            title: 'Export to',
+        });
+        if (!target) {
+            return;
+        }
+        const columns = scope.value === 'all' ? Array.from({ length: info.columnCount }, (_, i) => i) : viewColumns;
+        const options: ExportOptions = {
+            format: format.value, scope: scope.value, columns, outPath: target.fsPath, table, sheetName: base.slice(0, 31),
+        };
+        try {
+            const result = await vscode.window.withProgress(
+                { location: vscode.ProgressLocation.Notification, title: `Exporting ${path.basename(target.fsPath)}`, cancellable: true },
+                async (progress, cancelToken) => {
+                    let last = 0;
+                    const { id, promise } = this.worker.request<ExportResult | null>({ type: 'export', options }, (p) => {
+                        const { done, total } = p as ExportProgress;
+                        const pct = total > 0 ? Math.floor((done / total) * 100) : 100;
+                        progress.report({ increment: pct - last, message: `${done.toLocaleString()} of ${total.toLocaleString()} rows` });
+                        last = pct;
+                    });
+                    cancelToken.onCancellationRequested(() => this.worker.cancel(id));
+                    return promise;
+                },
+            );
+            if (result === null) {
+                void vscode.window.showInformationMessage('Export cancelled.');
+                return;
+            }
+            const note = result.truncated ? ` (stopped at the Excel limit of ${XLSX_MAX_ROWS.toLocaleString()} rows)` : '';
+            const choice = await vscode.window.showInformationMessage(
+                `Exported ${result.rows.toLocaleString()} rows to ${path.basename(result.path)}${note}.`,
+                'Open', 'Reveal in file manager',
+            );
+            if (choice === 'Open') {
+                await vscode.commands.executeCommand('vscode.open', target);
+            } else if (choice === 'Reveal in file manager') {
+                await vscode.commands.executeCommand('revealFileInOS', target);
+            }
+        } catch (err) {
+            void vscode.window.showErrorMessage(`Export failed: ${errorMessage(err)}`);
+        }
     }
 
     private async chooseParseOptions(): Promise<void> {

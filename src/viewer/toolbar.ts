@@ -1,6 +1,6 @@
 import { PAGE_SIZES } from '../csv/core/layout';
 import type { ColorMode, LongText } from '../csv/core/layout';
-import { applyFilters, emit, goToPage, on, totalPages } from './actions';
+import { applyFilters, emit, goToPage, on, requestExport, totalPages } from './actions';
 import { fmt, h, showMenu } from './dom';
 import { resetLayout, setColorMode, setLongText, setPageSize, showAll, toggleColumn } from './layoutOps';
 import { post, state } from './state';
@@ -85,18 +85,19 @@ export function mountToolbar(root: HTMLElement): { searchRow: HTMLElement } {
         ]);
     });
     const resetBtn = button('Reset view', 'Restore default columns, widths and display options', resetLayout);
+    const exportBtn = button('Export…', 'Download the current view or the whole file as CSV, Excel, JSON, SQL, …', requestExport);
 
     root.append(
         searchRow,
         h('div', { class: 'row' },
             parseChip, first, prev, pageInput, pageTotal, next, last, rowInput,
-            sizeSelect, textSelect, colorSelect, columnsBtn, hiddenBtn, resetBtn),
+            sizeSelect, textSelect, colorSelect, columnsBtn, hiddenBtn, resetBtn, exportBtn),
     );
 
     const update = (): void => {
         const { info, layout } = state;
         const ready = info !== null && layout !== null;
-        for (const el of [parseChip, first, prev, pageInput, next, last, rowInput, sizeSelect, textSelect, colorSelect, columnsBtn, resetBtn]) {
+        for (const el of [parseChip, first, prev, pageInput, next, last, rowInput, sizeSelect, textSelect, colorSelect, columnsBtn, resetBtn, exportBtn]) {
             (el as HTMLButtonElement).disabled = !ready;
         }
         relabelRowInput();

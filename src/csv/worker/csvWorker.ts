@@ -1,5 +1,6 @@
 import { parentPort } from 'worker_threads';
 import { CsvEngine } from '../core/engine';
+import { exportToFile } from '../export/exportFile';
 import type { CancelToken } from '../types';
 import type { WorkerMessage, WorkerRequest } from '../protocol';
 
@@ -128,6 +129,17 @@ async function handle(req: WorkerRequest): Promise<void> {
                 const token = tokenFor(req.id);
                 try {
                     send({ type: 'result', id: req.id, data: await getEngine().nonEmptyColumns(token) });
+                } finally {
+                    tokens.delete(req.id);
+                }
+                return;
+            }
+            case 'export': {
+                const token = tokenFor(req.id);
+                try {
+                    const result = await exportToFile(getEngine(), req.options, token, (done, total) =>
+                        send({ type: 'progress', id: req.id, data: { done, total } }));
+                    send({ type: 'result', id: req.id, data: result });
                 } finally {
                     tokens.delete(req.id);
                 }

@@ -1,7 +1,7 @@
 import type { Predicate } from './core/predicates';
 import type { ColorMode, Layout, LongText } from './core/layout';
 import type {
-    ColumnStats, DuplicateResult, FileInfo, FilterProgress, FilterResult, IndexProgress, PageResult, ParseOptions, UniqueResult,
+    ColumnStats, DuplicateResult, ExportOptions, ExportProgress, FileInfo, FilterProgress, FilterResult, IndexProgress, PageResult, ParseOptions, UniqueResult,
 } from './types';
 
 // ---- host <-> worker ------------------------------------------------------
@@ -14,12 +14,13 @@ export type WorkerRequest =
     | { id: number; type: 'stats'; column: number }
     | { id: number; type: 'duplicates'; columns: number[] }
     | { id: number; type: 'nonEmptyColumns' }
+    | { id: number; type: 'export'; options: ExportOptions }
     | { id: number; type: 'cancel'; target: number };
 
 export type WorkerMessage =
     | { type: 'result'; id: number; data: unknown }
     | { type: 'failure'; id: number; message: string }
-    | { type: 'progress'; id: number; data: IndexProgress | FilterProgress }
+    | { type: 'progress'; id: number; data: IndexProgress | FilterProgress | ExportProgress }
     | { type: 'fatal'; message: string };
 
 /** A request without its id (the client assigns it). */
@@ -35,7 +36,7 @@ export interface ViewerSettings {
 }
 
 /** Commands the host forwards to the webview (keybindings contributed in package.json). */
-export type ViewCommand = 'hideSelectedColumn' | 'showAllColumns';
+export type ViewCommand = 'hideSelectedColumn' | 'showAllColumns' | 'export';
 
 export type HostToView =
     | { type: 'opened'; info: FileInfo; layout: Layout; settings: ViewerSettings; fileName: string }
@@ -64,6 +65,7 @@ export type ViewToHost =
     | { type: 'duplicates'; jobId: number; columns: number[] }
     | { type: 'cancel'; kind: 'filter' | 'unique' | 'analysis'; jobId: number }
     | { type: 'nonEmpty'; jobId: number }
+    | { type: 'export'; columns: number[] }
     | { type: 'chooseParseOptions' }
     | { type: 'saveLayout'; layout: Layout }
     | { type: 'openInEditor'; text: string; language: string }

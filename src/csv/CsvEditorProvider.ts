@@ -63,6 +63,7 @@ export function registerCsvViewer(context: vscode.ExtensionContext): CsvViewerAp
         }),
         vscode.commands.registerCommand('get-unique-values.csv.hideSelectedColumn', () => activeSession?.sendCommand('hideSelectedColumn')),
         vscode.commands.registerCommand('get-unique-values.csv.showAllColumns', () => activeSession?.sendCommand('showAllColumns')),
+        vscode.commands.registerCommand('get-unique-values.csv.export', () => activeSession?.sendCommand('export')),
     );
 
     return { sessions };

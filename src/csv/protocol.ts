@@ -1,7 +1,7 @@
 import type { Predicate } from './core/predicates';
 import type { ColorMode, Layout, LongText } from './core/layout';
 import type {
-    ColumnStats, DuplicateColumnsResult, DuplicateResult, ExportOptions, ExportProgress, FileInfo, FilterProgress, FilterResult, ImportProgress, IndexProgress, PageResult, ParseOptions, UniqueResult,
+    ColumnStats, DuplicateColumnsResult, DuplicateResult, ExportOptions, ExportProgress, FileInfo, FileSummary, FilterProgress, FilterResult, ImportProgress, IndexProgress, PageResult, ParseOptions, UniqueResult,
 } from './types';
 
 // ---- host <-> worker ------------------------------------------------------
@@ -38,8 +38,10 @@ export interface ViewerSettings {
     defaultColumnWidth: number;
 }
 
-/** Commands the host forwards to the webview (keybindings contributed in package.json). */
-export type ViewCommand = 'hideSelectedColumn' | 'showAllColumns' | 'export';
+/** Commands the host forwards to the webview (keybindings in package.json and the Data Toolkit sidebar). */
+export type ViewCommand =
+    | 'hideSelectedColumn' | 'showAllColumns' | 'export' | 'toggleBadRows' | 'clearFilters' | 'hideEmptyColumns'
+    | 'applySet' | 'saveSet' | 'deleteSet' | 'duplicateRows' | 'duplicateColumns' | 'moveToFirst' | 'freezeColumn';
 
 export type HostToView =
     | { type: 'opened'; info: FileInfo; layout: Layout; settings: ViewerSettings; fileName: string }
@@ -56,7 +58,7 @@ export type HostToView =
     | { type: 'duplicateColumns'; jobId: number; result: DuplicateColumnsResult | null; error?: string }
     | { type: 'nonEmpty'; jobId: number; columns: number[] | null }
     | { type: 'fileChanged'; deleted: boolean }
-    | { type: 'command'; name: ViewCommand };
+    | { type: 'command'; name: ViewCommand; arg?: string };
 
 export type ViewToHost =
     | { type: 'ready' }
@@ -74,4 +76,5 @@ export type ViewToHost =
     | { type: 'chooseParseOptions' }
     | { type: 'saveLayout'; layout: Layout }
     | { type: 'openInEditor'; text: string; language: string }
-    | { type: 'copy'; text: string };
+    | { type: 'copy'; text: string }
+    | { type: 'summary'; summary: FileSummary };

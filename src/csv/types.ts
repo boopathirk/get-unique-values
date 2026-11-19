@@ -25,6 +25,23 @@ export interface FileInfo {
     size: number;
 }
 
+/** What the webview reports about the open file (shown in the sidebar's Current File view). Never row data. */
+export interface FileSummary {
+    fileName: string;
+    rows: number;
+    indexing: boolean;
+    columns: number;
+    header: string[];
+    delimiter: string;
+    hasHeader: boolean;
+    encoding: string;
+    badRows: number;
+    hiddenColumns: number;
+    filterActive: boolean;
+    matches: number;
+    sets: string[];
+}
+
 export interface IndexProgress {
     /** Data rows indexed so far (header excluded). */
     rows: number;

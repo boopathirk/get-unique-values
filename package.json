@@ -79,6 +79,40 @@
         "command": "get-unique-values.sidebar.refresh",
         "title": "Data Toolkit: Refresh",
         "icon": "$(refresh)"
+      },
+      {
+        "command": "get-unique-values.sidebar.fileAction",
+        "title": "Data Toolkit: Run Viewer Action"
+      },
+      {
+        "command": "get-unique-values.sidebar.pickColumn",
+        "title": "Data Toolkit: Pick a Column…"
+      },
+      {
+        "command": "get-unique-values.sidebar.applySet",
+        "title": "Data Toolkit: Apply Column Set"
+      },
+      {
+        "command": "get-unique-values.sidebar.deleteSet",
+        "title": "Data Toolkit: Delete Column Set",
+        "icon": "$(trash)"
+      },
+      {
+        "command": "get-unique-values.sidebar.saveSet",
+        "title": "Data Toolkit: Save Current Columns as a Set…"
+      },
+      {
+        "command": "get-unique-values.sidebar.applyPreset",
+        "title": "Data Toolkit: Apply Parse Preset"
+      },
+      {
+        "command": "get-unique-values.sidebar.deletePreset",
+        "title": "Data Toolkit: Delete Parse Preset",
+        "icon": "$(trash)"
+      },
+      {
+        "command": "get-unique-values.sidebar.savePreset",
+        "title": "Data Toolkit: Save Current Parse Settings as a Preset…"
       }
     ],
     "keybindings": [
@@ -162,6 +196,38 @@
         {
           "command": "get-unique-values.sidebar.refresh",
           "when": "false"
+        },
+        {
+          "command": "get-unique-values.sidebar.fileAction",
+          "when": "false"
+        },
+        {
+          "command": "get-unique-values.sidebar.pickColumn",
+          "when": "false"
+        },
+        {
+          "command": "get-unique-values.sidebar.applySet",
+          "when": "false"
+        },
+        {
+          "command": "get-unique-values.sidebar.deleteSet",
+          "when": "false"
+        },
+        {
+          "command": "get-unique-values.sidebar.saveSet",
+          "when": "false"
+        },
+        {
+          "command": "get-unique-values.sidebar.applyPreset",
+          "when": "false"
+        },
+        {
+          "command": "get-unique-values.sidebar.deletePreset",
+          "when": "false"
+        },
+        {
+          "command": "get-unique-values.sidebar.savePreset",
+          "when": "false"
         }
       ],
       "view/item/context": [
@@ -173,6 +239,16 @@
         {
           "command": "get-unique-values.sidebar.removeRecent",
           "when": "view == dataToolkit.recent && viewItem == recentFile",
+          "group": "inline"
+        },
+        {
+          "command": "get-unique-values.sidebar.deleteSet",
+          "when": "view == dataToolkit.file && viewItem == columnSet",
+          "group": "inline"
+        },
+        {
+          "command": "get-unique-values.sidebar.deletePreset",
+          "when": "view == dataToolkit.presets && viewItem == preset",
           "group": "inline"
         }
       ],
@@ -262,6 +338,35 @@
           "minimum": 80,
           "description": "Default column width in pixels.",
           "maximum": 2000
+        },
+        "getUniqueValues.csv.presets": {
+          "type": "array",
+          "default": [],
+          "items": {
+            "type": "object",
+            "properties": {
+              "name": {
+                "type": "string"
+              },
+              "delimiter": {
+                "type": "string"
+              },
+              "hasHeader": {
+                "type": "boolean"
+              },
+              "encoding": {
+                "type": "string",
+                "enum": [
+                  "utf-8",
+                  "latin1"
+                ]
+              }
+            },
+            "required": [
+              "name"
+            ]
+          },
+          "markdownDescription": "Saved parse settings (delimiter, header, encoding). Manage them from the Data Toolkit sidebar."
         }
       }
     },

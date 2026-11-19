@@ -8,7 +8,7 @@ import type { ColorMode, LongText } from './core/layout';
 import type { Predicate } from './core/predicates';
 import type { HostToView, ViewCommand, ViewToHost, ViewerSettings } from './protocol';
 import type {
-    ColumnStats, DuplicateColumnsResult, DuplicateResult, ExportFormat, ExportOptions, ExportProgress, ExportResult, FileInfo, FilterProgress, FilterResult, ImportProgress, IndexProgress, OpenResult, PageResult, ParseOptions, UniqueResult,
+    ColumnStats, DuplicateColumnsResult, DuplicateResult, ExportFormat, ExportOptions, ExportProgress, ExportResult, FileInfo, FileSummary, FilterProgress, FilterResult, ImportProgress, IndexProgress, OpenResult, PageResult, ParseOptions, UniqueResult,
 } from './types';
 import { XLSX_MAX_ROWS } from './types';
 
@@ -69,6 +69,11 @@ export class CsvSession implements vscode.Disposable {
     /** Most recent page sent to the webview (read by the integration test). */
     lastPage: PageResult | undefined;
 
+    /** What the webview last reported about the open file (undefined until a file is shown). */
+    summary: FileSummary | undefined;
+    private readonly summaryEmitter = new vscode.EventEmitter<void>();
+    readonly onDidChangeSummary = this.summaryEmitter.event;
+
     constructor(
         private readonly context: vscode.ExtensionContext,
         private readonly uri: vscode.Uri,
@@ -100,9 +105,32 @@ export class CsvSession implements vscode.Disposable {
         );
     }
 
-    /** Forward a keybinding command to the webview. */
-    sendCommand(name: ViewCommand): void {
-        this.post({ type: 'command', name });
+    /** Forward a command (keybinding or sidebar) to the webview. */
+    sendCommand(name: ViewCommand, arg?: string): void {
+        this.post({ type: 'command', name, arg });
+    }
+
+    /** The parse options chosen for this file (empty fields mean auto-detect). */
+    get parseSettings(): ParseOptions {
+        return { ...this.parseOptions };
+    }
+
+    /** Use these parse options for this file from now on (as "chooseParseOptions" does) and reopen it. */
+    async applyParseOptions(options: ParseOptions): Promise<void> {
+        if (this.disposed) {
+            return;
+        }
+        this.parseOptions = { delimiter: options.delimiter, hasHeader: options.hasHeader, encoding: options.encoding };
+        await this.context.workspaceState.update(this.key('parse'), this.parseOptions);
+        await this.openFile();
+    }
+
+    private setSummary(summary: FileSummary | undefined): void {
+        if (summary === undefined && this.summary === undefined) {
+            return;
+        }
+        this.summary = summary;
+        this.summaryEmitter.fire();
     }
 
     private createWorker(): WorkerClient {
@@ -117,6 +145,8 @@ export class CsvSession implements vscode.Disposable {
 
     dispose(): void {
         this.disposed = true;
+        this.setSummary(undefined);
+        this.summaryEmitter.dispose();
         for (const d of this.disposables) {
             d.dispose();
         }
@@ -197,6 +227,9 @@ export class CsvSession implements vscode.Disposable {
             case 'copy':
                 await vscode.env.clipboard.writeText(m.text);
                 break;
+            case 'summary':
+                this.setSummary(m.summary);
+                break;
         }
     }
 
@@ -228,6 +261,7 @@ export class CsvSession implements vscode.Disposable {
                 return;
             }
             if (result.kind !== 'ok') {
+                this.setSummary(undefined);
                 this.post({ type: 'status', kind: result.kind, message: statusMessage(result) });
                 return;
             }
@@ -243,6 +277,7 @@ export class CsvSession implements vscode.Disposable {
             if (gen !== this.openGen) {
                 return;
             }
+            this.setSummary(undefined);
             this.post({ type: 'status', kind: 'error', message: errorMessage(err) });
         }
     }

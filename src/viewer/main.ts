@@ -1,14 +1,17 @@
 import type { ThemeKind } from '../csv/core/colors';
-import type { HostToView } from '../csv/protocol';
-import { emit, loadPage, requestExport } from './actions';
+import type { HostToView, ViewCommand } from '../csv/protocol';
+import { applyFilters, clearAllFilters, emit, loadPage, requestExport } from './actions';
 import { mountBanner } from './banner';
 import { closePicker, mountColumnPicker } from './columnPicker';
 import { h } from './dom';
 import { mountKeyboard } from './keyboard';
-import { applyNonEmpty, hideColumn, showAll } from './layoutOps';
+import {
+    applyNonEmpty, applySet, deleteSet, freezeColumnOp, hideColumn, moveColumnToFirst, requestHideEmpty, saveSet, showAll,
+} from './layoutOps';
 import { mountSearch } from './searchBar';
 import { mountSidePanel } from './sidePanel';
 import { post, resetForNewFile, state } from './state';
+import { mountSummary } from './summary';
 import { mountTable } from './table';
 import { mountStatus, mountToolbar } from './toolbar';
 
@@ -49,8 +52,67 @@ mountSearch(searchRow);
 mountSidePanel(sideEl);
 mountColumnPicker();
 mountKeyboard();
+mountSummary();
 
 new MutationObserver(applyTheme).observe(document.body, { attributes: true, attributeFilter: ['class'] });
+
+/** A column number sent by the host, or null when it is not a non-negative integer. */
+function columnArg(arg: string | undefined): number | null {
+    const n = Number(arg);
+    return arg !== undefined && arg.trim() !== '' && Number.isInteger(n) && n >= 0 ? n : null;
+}
+
+function runCommand(name: ViewCommand, arg: string | undefined): void {
+    if (!state.info || !state.layout) {
+        return; // no file shown (yet): every command is a no-op, as before
+    }
+    switch (name) {
+        case 'hideSelectedColumn':
+            if (state.selected) {
+                hideColumn(state.selected.col);
+            }
+            break;
+        case 'showAllColumns':
+            showAll();
+            break;
+        case 'export':
+            requestExport();
+            break;
+        case 'toggleBadRows':
+            state.badRowsOnly = !state.badRowsOnly;
+            applyFilters();
+            break;
+        case 'clearFilters':
+            clearAllFilters();
+            break;
+        case 'hideEmptyColumns':
+            requestHideEmpty();
+            break;
+        case 'applySet':
+            applySet(arg ?? '');
+            break;
+        case 'saveSet':
+            saveSet(arg ?? '');
+            break;
+        case 'deleteSet':
+            deleteSet(arg ?? '');
+            break;
+        case 'duplicateRows':
+            emit('openDuplicates', { mode: 'rows', columns: [] });
+            break;
+        case 'duplicateColumns':
+            emit('openDuplicates', { mode: 'columns' });
+            break;
+        case 'moveToFirst':
+        case 'freezeColumn': {
+            const column = columnArg(arg);
+            if (column !== null) {
+                (name === 'moveToFirst' ? moveColumnToFirst : freezeColumnOp)(column);
+            }
+            break;
+        }
+    }
+}
 
 window.addEventListener('message', (event: MessageEvent<HostToView>) => {
     const m = event.data;
@@ -165,15 +227,7 @@ window.addEventListener('message', (event: MessageEvent<HostToView>) => {
             }
             break;
         case 'command':
-            if (m.name === 'hideSelectedColumn') {
-                if (state.selected) {
-                    hideColumn(state.selected.col);
-                }
-            } else if (m.name === 'export') {
-                requestExport();
-            } else {
-                showAll();
-            }
+            runCommand(m.name, m.arg);
             break;
         case 'fileChanged':
             state.banner = {

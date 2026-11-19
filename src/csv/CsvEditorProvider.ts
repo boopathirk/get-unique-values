@@ -10,9 +10,11 @@ export interface CsvViewerApi {
     sessions: Map<string, CsvSession>;
     getActive(): CsvSession | undefined;
     onDidChangeActive: vscode.Event<void>;
+    /** Fires when the active session's summary changes or another session (or none) becomes active. */
+    onDidChangeSummary: vscode.Event<void>;
 }
 
-const NO_VIEWER_MESSAGE = 'Open a CSV or Excel file in the viewer first.';
+export const NO_VIEWER_MESSAGE = 'Open a CSV or Excel file in the viewer first.';
 
 class CsvDocument implements vscode.CustomDocument {
     constructor(readonly uri: vscode.Uri) { }
@@ -24,10 +26,16 @@ export function registerCsvViewer(context: vscode.ExtensionContext, onOpen?: (ur
     /** The CSV Viewer editor that was most recently active (target of the keybinding commands). */
     let activeSession: CsvSession | undefined;
     const activeEmitter = new vscode.EventEmitter<void>();
+    const summaryEmitter = new vscode.EventEmitter<void>();
+    /** Listener on the active session's summary; replaced on every active change. */
+    let summarySubscription: vscode.Disposable | undefined;
     const setActive = (next: CsvSession | undefined): void => {
         if (activeSession !== next) {
             activeSession = next;
+            summarySubscription?.dispose();
+            summarySubscription = next?.onDidChangeSummary(() => summaryEmitter.fire());
             activeEmitter.fire();
+            summaryEmitter.fire();
         }
     };
 
@@ -112,7 +120,14 @@ export function registerCsvViewer(context: vscode.ExtensionContext, onOpen?: (ur
             activeSession.sendCommand('export');
         }),
         activeEmitter,
+        summaryEmitter,
+        { dispose: () => summarySubscription?.dispose() },
     );
 
-    return { sessions, getActive: () => activeSession, onDidChangeActive: activeEmitter.event };
+    return {
+        sessions,
+        getActive: () => activeSession,
+        onDidChangeActive: activeEmitter.event,
+        onDidChangeSummary: summaryEmitter.event,
+    };
 }

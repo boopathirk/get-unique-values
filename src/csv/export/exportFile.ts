@@ -26,7 +26,7 @@ export const XLSX_MAX_ROWS = 1_048_576;
 
 /** Plain numbers become numeric cells; anything that could lose information (leading zeros, 16+ digits, exponents) stays text. */
 export function xlsxValue(v: string): string | number {
-    return /^-?(0|[1-9]\d{0,14})(\.\d+)?$/.test(v) ? Number(v) : v;
+    return /^-?(0|[1-9]\d{0,14})(\.\d+)?$/.test(v) && String(Number(v)) === v ? Number(v) : v;
 }
 
 export async function exportToFile(
@@ -45,6 +45,13 @@ export async function exportToFile(
         await fs.promises.rm(opts.outPath, { force: true });
     }
     return result;
+}
+
+function closeStream(stream: fs.WriteStream): Promise<void> {
+    return new Promise<void>((resolve) => {
+        stream.once('close', () => resolve());
+        stream.destroy();
+    });
 }
 
 async function writeText(
@@ -73,14 +80,14 @@ async function writeText(
             await write(window.map((r) => fmt.row(pick(r))).join(''));
         }, onProgress);
         if (outcome === 'cancelled') {
-            stream.destroy();
+            await closeStream(stream);
             return null;
         }
         await write(fmt.end());
         await new Promise<void>((resolve) => stream.end(resolve));
         return { rows, truncated: false, path: opts.outPath };
     } catch (err) {
-        stream.destroy();
+        await closeStream(stream);
         await fs.promises.rm(opts.outPath, { force: true });
         throw err;
     }
@@ -99,17 +106,29 @@ async function writeXlsx(
     ws.addRow(header).commit();
     let rows = 0;
     let truncated = false;
-    const outcome = await engine.exportRows(opts.scope, token, async (window) => {
-        for (const r of window) {
-            if (rows + 1 >= XLSX_MAX_ROWS) {
-                truncated = true;
-                return true;
+    let outcome: Awaited<ReturnType<CsvEngine['exportRows']>>;
+    try {
+        outcome = await engine.exportRows(opts.scope, token, async (window) => {
+            for (const r of window) {
+                if (rows + 1 >= XLSX_MAX_ROWS) {
+                    truncated = true;
+                    return true;
+                }
+                ws.addRow(pick(r).map(xlsxValue)).commit();
+                rows++;
             }
-            ws.addRow(pick(r).map(xlsxValue)).commit();
-            rows++;
+            return false;
+        }, onProgress);
+    } catch (err) {
+        try {
+            ws.commit();
+            await wb.commit();
+        } catch {
+            // ignore: the original error is what matters
         }
-        return false;
-    }, onProgress);
+        await fs.promises.rm(opts.outPath, { force: true });
+        throw err;
+    }
     ws.commit();
     await wb.commit();
     return outcome === 'cancelled' ? null : { rows, truncated, path: opts.outPath };

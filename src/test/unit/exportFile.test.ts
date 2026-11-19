@@ -97,6 +97,17 @@ suite('exportToFile', () => {
         await assert.rejects(() => exportToFile(engine, opts({ outPath: path.join(dir, 'no-such-dir', 'x.csv') }), live(), noop));
     });
 
+    for (const format of ['csv', 'xlsx'] as const) {
+        test(`${format}: failing export rejects and leaves no file`, async () => {
+            const engine = await load(CSV);
+            const p = out(`fail.${format}`);
+            const failing = engine as unknown as { exportRows: () => Promise<never> };
+            failing.exportRows = () => Promise.reject(new Error('boom'));
+            await assert.rejects(() => exportToFile(engine, opts({ outPath: p, format }), live(), noop), /boom/);
+            assert.strictEqual(fs.existsSync(p), false);
+        });
+    }
+
     test('xlsx round trip with numbers kept as numbers', async () => {
         const engine = await load(CSV);
         const r = await exportToFile(engine, opts({ outPath: out('h.xlsx'), format: 'xlsx', sheetName: 'Items' }), live(), noop);
@@ -113,6 +124,8 @@ suite('exportToFile', () => {
     test('xlsxValue keeps leading zeros and long numbers as text', () => {
         assert.strictEqual(xlsxValue('42'), 42);
         assert.strictEqual(xlsxValue('-3.5'), -3.5);
+        assert.strictEqual(xlsxValue('1.50'), '1.50');
+        assert.strictEqual(xlsxValue('-0'), '-0');
         assert.strictEqual(xlsxValue('007'), '007');
         assert.strictEqual(xlsxValue('1234567890123456'), '1234567890123456');
         assert.strictEqual(xlsxValue('1e5'), '1e5');

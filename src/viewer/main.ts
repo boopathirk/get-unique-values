@@ -3,6 +3,7 @@ import type { HostToView } from '../csv/protocol';
 import { emit, loadPage } from './actions';
 import { mountBanner } from './banner';
 import { h } from './dom';
+import { mountSearch } from './searchBar';
 import { post, resetForNewFile, state } from './state';
 import { mountTable } from './table';
 import { mountStatus, mountToolbar } from './toolbar';
@@ -40,7 +41,7 @@ const { searchRow } = mountToolbar(toolbarEl);
 mountBanner(bannerEl);
 mountTable(tableEl);
 mountStatus(statusEl);
-void searchRow; // filled in Task 12
+mountSearch(searchRow);
 void sideEl; // filled in Task 13
 
 new MutationObserver(applyTheme).observe(document.body, { attributes: true, attributeFilter: ['class'] });

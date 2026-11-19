@@ -53,8 +53,8 @@
     "watch": "node esbuild.mjs --watch",
     "typecheck": "tsc -p ./ --noEmit && tsc -p src/viewer --noEmit",
     "lint": "eslint src",
-    "test:unit": "node esbuild.mjs && tsc -p tsconfig.test.json && mocha --ui tdd \"out-test/test/unit/**/*.test.js\"",
-    "test:integration": "node esbuild.mjs && tsc -p tsconfig.test.json && vscode-test",
+    "test:unit": "node -e \"require('fs').rmSync('out-test',{recursive:true,force:true})\" && node esbuild.mjs && tsc -p tsconfig.test.json && mocha --ui tdd \"out-test/test/unit/**/*.test.js\"",
+    "test:integration": "node -e \"require('fs').rmSync('out-test',{recursive:true,force:true})\" && node esbuild.mjs && tsc -p tsconfig.test.json && vscode-test",
     "pretest": "npm run typecheck && npm run lint",
     "test": "npm run test:unit && npm run test:integration",
     "perf": "tsc -p tsconfig.test.json && node --expose-gc scripts/perf.mjs"

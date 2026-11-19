@@ -2,8 +2,8 @@
   "name": "get-unique-values",
   "displayName": "Data Toolkit",
   "publisher": "boopathi08",
-  "description": "Developer data tools: a fast viewer for huge CSV files (pagination, search, unique values, filters, column colours) and duplicate-line removal. More tools coming.",
-  "version": "0.1.2",
+  "description": "Developer data tools: a fast viewer for huge CSV and Excel (.xlsx) files (pagination, search, unique values, filters, column colours, export to many formats) and duplicate-line removal. More tools coming.",
+  "version": "0.2.0",
   "engines": {
     "vscode": "^1.99.0"
   },
@@ -20,7 +20,10 @@
     "csv",
     "csv viewer",
     "large csv",
-    "tsv"
+    "tsv",
+    "excel",
+    "xlsx",
+    "xlsm"
   ],
   "main": "./out/extension.js",
   "contributes": {

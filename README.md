@@ -39,6 +39,8 @@ Open a file with **right-click → Open in CSV Viewer**, the button in the edito
 | Find duplicates | Column menu → *Find duplicates*: lists repeated values; click a value to filter the table to its rows. |
 | Large-file prompt | Opening a CSV above `getUniqueValues.csv.largeFileMB` offers to open it in the CSV Viewer. |
 | Copy | Copy a cell, or a row as CSV or JSON. |
+| Open Excel files (.xlsx, .xlsm) | Open a workbook in the viewer and pick a sheet; each sheet is converted once to a cached CSV, so large sheets work. Use **CSV Viewer: Choose Excel Sheet…** to switch sheets. |
+| Export and convert (CSV, Excel, JSON, JSON Lines, TSV, SQL INSERT, Markdown) | Export… (toolbar or Command Palette) writes the current filtered view or the whole file in any of these formats. |
 
 Keyboard: arrows move the cell, `PageUp`/`PageDown` change page, `Ctrl+F` search, `Enter` cell detail, `Shift+Enter` record view, `Ctrl+C` copy cell, `Ctrl+Shift+H` hide column, `Ctrl+Shift+U` show all columns, `Esc` close panel.
 

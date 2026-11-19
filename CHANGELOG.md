@@ -2,6 +2,19 @@
 
 All notable changes to the "get-unique-values" extension are documented in this file.
 
+## [0.2.0]
+
+### Added
+- **Excel files**: `.xlsx` and `.xlsm` files open in the CSV Viewer with a sheet picker (command **CSV Viewer: Choose Excel Sheet…**). Each sheet is converted once to a cached CSV, streamed, so large sheets work.
+- **Export…** (editor toolbar and Command Palette) writes the current view or the whole file as CSV, Excel, JSON, JSON Lines, TSV, SQL INSERT or Markdown.
+
+### Notes
+- `.xls` and `.ods` are not supported yet.
+- Fully empty rows in an Excel sheet are skipped.
+- Rows are padded to the first row's width.
+- Rich text stored inline by some stream writers may lose its leading runs.
+- Excel sheets are converted once to a cached CSV, kept for 7 days.
+
 ## [0.1.2]
 
 ### Added

@@ -3,7 +3,7 @@
   "displayName": "Data Toolkit",
   "publisher": "boopathi08",
   "description": "Developer data tools: a fast viewer for huge CSV files (pagination, search, unique values, filters, column colours) and duplicate-line removal. More tools coming.",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "engines": {
     "vscode": "^1.99.0"
   },

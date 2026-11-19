@@ -2,6 +2,11 @@
 
 All notable changes to the "get-unique-values" extension are documented in this file.
 
+## [0.1.1]
+
+### Changed
+- Display name is now **Data Toolkit**; README documents how to install and open the extension.
+
 ## [0.1.0]
 
 ### Added

@@ -130,3 +130,9 @@ pre.detail-value { margin: 0; white-space: pre-wrap; word-break: break-word; fon
 .picker-item .dot { width: 10px; height: 10px; border-radius: 50%; flex: none; }
 .picker-item .pname { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .picker-item.hidden-col .pname { opacity: 0.55; }
+.stats-grid { display: grid; grid-template-columns: max-content 1fr; gap: 4px 12px; padding: 8px 0; }
+.stats-k { color: var(--vscode-descriptionForeground); }
+.stats-v { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.stats-sample { padding: 2px 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-family: var(--vscode-editor-font-family); }
+.dup-row { display: flex; justify-content: space-between; gap: 8px; width: 100%; text-align: left; background: none; border: 0; border-bottom: 1px solid var(--vscode-panel-border); padding: 4px 2px; color: inherit; cursor: pointer; }
+.dup-row:hover { background: var(--vscode-list-hoverBackground); }

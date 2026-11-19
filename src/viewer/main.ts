@@ -135,6 +135,22 @@ window.addEventListener('message', (event: MessageEvent<HostToView>) => {
                 emit('panel');
             }
             break;
+        case 'stats':
+            if (m.jobId === state.analysisJob) {
+                state.stats = m.result;
+                state.analysisLoading = false;
+                state.analysisError = m.error ?? '';
+                emit('panel');
+            }
+            break;
+        case 'duplicates':
+            if (m.jobId === state.analysisJob) {
+                state.duplicates = m.result;
+                state.analysisLoading = false;
+                state.analysisError = m.error ?? '';
+                emit('panel');
+            }
+            break;
         case 'nonEmpty':
             if (m.jobId === state.nonEmptyJob) {
                 applyNonEmpty(m.columns);

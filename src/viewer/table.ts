@@ -1,3 +1,4 @@
+import { detectColumnType } from '../csv/core/columnStats';
 import { columnColor } from '../csv/core/colors';
 import type { ColumnColor } from '../csv/core/colors';
 import { visibleColumns } from '../csv/core/layout';
@@ -89,6 +90,8 @@ function headerMenu(column: number): MenuItem[] {
     const position = visibleColumns(layout).indexOf(column);
     const items: MenuItem[] = [
         { label: 'Unique values', run: () => emit('openUnique', column) },
+        { label: 'Column stats', run: () => emit('openStats', column) },
+        { label: 'Find duplicates', run: () => emit('openDuplicates', column) },
         {
             label: 'Search in this column',
             run: () => {
@@ -215,7 +218,9 @@ function renderTable(): void {
     const headRow = h('tr', {}, h('th', { class: 'rownum' }, '#'));
     for (const c of cols) {
         const name = info.header[c] ?? `Column ${c + 1}`;
-        const th = h('th', { class: `colhead${pinned.has(c) ? ' pinned' : ''}`, title: name });
+        const sample = state.rows.map((r) => r[c] ?? '');
+        const type = sample.length > 0 ? detectColumnType(sample) : '';
+        const th = h('th', { class: `colhead${pinned.has(c) ? ' pinned' : ''}`, title: type ? `${name} (${type})` : name });
         const color = colors.get(c);
         if (colored && color) {
             paint(th, color);

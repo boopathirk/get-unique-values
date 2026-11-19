@@ -27,7 +27,7 @@ export function loadPage(page: number = state.page): void {
 }
 
 function closeRowPanels(): void {
-    if (state.panel && state.panel.kind !== 'unique') {
+    if (state.panel && (state.panel.kind === 'detail' || state.panel.kind === 'record')) {
         state.panel = null;
         emit('panel');
     }

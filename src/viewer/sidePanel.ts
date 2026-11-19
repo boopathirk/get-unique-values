@@ -1,6 +1,8 @@
 import { emit, on } from './actions';
 import { renderDetail, renderRecord } from './detailPanel';
+import { renderDuplicates, openDuplicates } from './duplicatesPanel';
 import { state } from './state';
+import { openStats, renderStats } from './statsPanel';
 import { openUnique, renderUnique } from './uniquePanel';
 
 export function mountSidePanel(root: HTMLElement): void {
@@ -15,6 +17,12 @@ export function mountSidePanel(root: HTMLElement): void {
             case 'unique':
                 renderUnique(root, panel.column);
                 break;
+            case 'stats':
+                renderStats(root, panel.column);
+                break;
+            case 'duplicates':
+                renderDuplicates(root, panel.column);
+                break;
             case 'detail':
                 renderDetail(root, panel.rowNumber, panel.col);
                 break;
@@ -26,6 +34,8 @@ export function mountSidePanel(root: HTMLElement): void {
     on('panel', render);
     on('render', render);
     on<number>('openUnique', openUnique);
+    on<number>('openStats', openStats);
+    on<number>('openDuplicates', openDuplicates);
     on<{ row: number; col: number }>('openDetail', ({ row, col }) => {
         state.panel = { kind: 'detail', rowNumber: state.rowNumbers[row] ?? row, col };
         emit('panel');

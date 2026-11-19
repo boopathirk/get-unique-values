@@ -77,3 +77,21 @@ export interface FilterResult {
     matches: number;
     complete: boolean;
 }
+
+export type ColumnType = 'integer' | 'number' | 'boolean' | 'date' | 'url' | 'email' | 'json' | 'html' | 'text';
+
+export interface ColumnStats {
+    column: number;
+    type: ColumnType;
+    rows: number;
+    empty: number;
+    distinct: number;
+    distinctCapped: boolean;
+    min: string;
+    max: string;
+    numeric: boolean;
+    minLen: number;
+    maxLen: number;
+    avgLen: number;
+    samples: string[];
+}

@@ -115,3 +115,8 @@ export interface DuplicateResult {
     /** True when more than DUPLICATE_KEY_CAP distinct keys were seen: counts for later keys are unknown. */
     capped: boolean;
 }
+
+export interface ExportProgress {
+    done: number;
+    total: number;
+}

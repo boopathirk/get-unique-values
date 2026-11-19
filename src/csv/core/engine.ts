@@ -421,6 +421,28 @@ export class CsvEngine {
         };
     }
 
+    /** Stream the rows of the current view (or the whole file) to `onWindow`, a window at a time. */
+    async exportRows(
+        scope: 'view' | 'all',
+        token: CancelToken,
+        onWindow: (rows: string[][]) => Promise<boolean | void>,
+        onProgress?: (done: number, total: number) => void,
+    ): Promise<ScanOutcome> {
+        await this.indexFinished;
+        this.throwIfIndexFailed();
+        let runs: Run[];
+        if (scope === 'view' && this.view) {
+            if (!this.viewComplete) {
+                throw new Error('Wait for the search to finish before exporting the filtered rows.');
+            }
+            runs = coalesce(this.view.slice(0, this.view.length));
+        } else {
+            runs = [[0, this.dataRowCount]];
+        }
+        const total = runs.reduce((n, r) => n + r[1], 0);
+        return this.scanWindows(runs, token, (_first, rows) => onWindow(rows), (done) => onProgress?.(done, total));
+    }
+
     async dispose(): Promise<void> {
         for (const w of this.waiters) {
             w.resolve();
@@ -534,10 +556,10 @@ export class CsvEngine {
      * `visit` may return true to stop early. Yields to the event loop between windows
      * (the awaited disk read), so cancel messages are processed.
      */
-    private async scan(
+    private async scanWindows(
         runs: Run[],
         token: CancelToken,
-        visit: (rowNum: number, fields: string[]) => boolean | void,
+        onWindow: (firstRow: number, rows: string[][]) => Promise<boolean | void> | boolean | void,
         tick: (scanned: number) => void,
     ): Promise<ScanOutcome> {
         const starts = this.indexer.starts;
@@ -557,10 +579,8 @@ export class CsvEngine {
                     n++;
                 }
                 const rows = await this.readRows(this.headerRows + r, n);
-                for (let k = 0; k < n; k++) {
-                    if (visit(r + k, rows[k]) === true) {
-                        return 'stopped';
-                    }
+                if ((await onWindow(r, rows)) === true) {
+                    return 'stopped';
                 }
                 r += n;
                 scanned += n;
@@ -568,5 +588,21 @@ export class CsvEngine {
             }
         }
         return 'complete';
+    }
+
+    private scan(
+        runs: Run[],
+        token: CancelToken,
+        visit: (rowNum: number, fields: string[]) => boolean | void,
+        tick: (scanned: number) => void,
+    ): Promise<ScanOutcome> {
+        return this.scanWindows(runs, token, (first, rows) => {
+            for (let k = 0; k < rows.length; k++) {
+                if (visit(first + k, rows[k]) === true) {
+                    return true;
+                }
+            }
+            return false;
+        }, tick);
     }
 }

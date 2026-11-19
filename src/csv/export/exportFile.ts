@@ -1,0 +1,116 @@
+import * as fs from 'fs';
+import ExcelJS from 'exceljs';
+import { createFormatter } from '../core/formats';
+import type { TextFormat } from '../core/formats';
+import type { CsvEngine } from '../core/engine';
+import type { CancelToken } from '../types';
+
+export type ExportFormat = TextFormat | 'xlsx';
+
+export interface ExportOptions {
+    format: ExportFormat;
+    scope: 'view' | 'all';
+    columns: number[];
+    outPath: string;
+    table?: string;
+    sheetName?: string;
+}
+
+export interface ExportResult {
+    rows: number;
+    truncated: boolean;
+    path: string;
+}
+
+export const XLSX_MAX_ROWS = 1_048_576;
+
+/** Plain numbers become numeric cells; anything that could lose information (leading zeros, 16+ digits, exponents) stays text. */
+export function xlsxValue(v: string): string | number {
+    return /^-?(0|[1-9]\d{0,14})(\.\d+)?$/.test(v) ? Number(v) : v;
+}
+
+export async function exportToFile(
+    engine: CsvEngine,
+    opts: ExportOptions,
+    token: CancelToken,
+    onProgress: (done: number, total: number) => void,
+): Promise<ExportResult | null> {
+    const info = await engine.getInfo();
+    const header = opts.columns.map((c) => info.header[c] ?? `Column ${c + 1}`);
+    const pick = (row: string[]): string[] => opts.columns.map((c) => row[c] ?? '');
+    const result = opts.format === 'xlsx'
+        ? await writeXlsx(engine, opts, header, pick, token, onProgress)
+        : await writeText(engine, opts, header, pick, token, onProgress);
+    if (result === null) {
+        await fs.promises.rm(opts.outPath, { force: true });
+    }
+    return result;
+}
+
+async function writeText(
+    engine: CsvEngine,
+    opts: ExportOptions,
+    header: string[],
+    pick: (row: string[]) => string[],
+    token: CancelToken,
+    onProgress: (done: number, total: number) => void,
+): Promise<ExportResult | null> {
+    const fmt = createFormatter(opts.format as Exclude<ExportFormat, 'xlsx'>, header, { table: opts.table });
+    const stream = fs.createWriteStream(opts.outPath);
+    await new Promise<void>((resolve, reject) => {
+        stream.once('open', () => resolve());
+        stream.once('error', reject);
+    });
+    stream.on('error', () => undefined); // later failures surface through the write callbacks
+    const write = (text: string): Promise<void> => text === ''
+        ? Promise.resolve()
+        : new Promise<void>((resolve, reject) => stream.write(text, (err) => (err ? reject(err) : resolve())));
+    let rows = 0;
+    try {
+        await write(fmt.begin());
+        const outcome = await engine.exportRows(opts.scope, token, async (window) => {
+            rows += window.length;
+            await write(window.map((r) => fmt.row(pick(r))).join(''));
+        }, onProgress);
+        if (outcome === 'cancelled') {
+            stream.destroy();
+            return null;
+        }
+        await write(fmt.end());
+        await new Promise<void>((resolve) => stream.end(resolve));
+        return { rows, truncated: false, path: opts.outPath };
+    } catch (err) {
+        stream.destroy();
+        await fs.promises.rm(opts.outPath, { force: true });
+        throw err;
+    }
+}
+
+async function writeXlsx(
+    engine: CsvEngine,
+    opts: ExportOptions,
+    header: string[],
+    pick: (row: string[]) => string[],
+    token: CancelToken,
+    onProgress: (done: number, total: number) => void,
+): Promise<ExportResult | null> {
+    const wb = new ExcelJS.stream.xlsx.WorkbookWriter({ filename: opts.outPath, useStyles: false, useSharedStrings: false });
+    const ws = wb.addWorksheet((opts.sheetName || 'Data').slice(0, 31));
+    ws.addRow(header).commit();
+    let rows = 0;
+    let truncated = false;
+    const outcome = await engine.exportRows(opts.scope, token, async (window) => {
+        for (const r of window) {
+            if (rows + 1 >= XLSX_MAX_ROWS) {
+                truncated = true;
+                return true;
+            }
+            ws.addRow(pick(r).map(xlsxValue)).commit();
+            rows++;
+        }
+        return false;
+    }, onProgress);
+    ws.commit();
+    await wb.commit();
+    return outcome === 'cancelled' ? null : { rows, truncated, path: opts.outPath };
+}

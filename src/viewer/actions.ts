@@ -52,6 +52,7 @@ export function applyFilters(): void {
     state.selected = null;
     closeRowPanels();
     post({ type: 'filter', jobId: state.filterJob, predicates });
+    loadPage(0);
     emit('status');
 }
 

@@ -19,6 +19,9 @@ export class WorkerClient {
     /** Progress handlers that outlive their request (index progress after `open` resolved). */
     private readonly lingering = new Map<number, (p: Progress) => void>();
 
+    private disposed = false;
+    private dead = false;
+
     onFatal: (message: string) => void = () => undefined;
 
     constructor(workerPath: string) {
@@ -26,14 +29,16 @@ export class WorkerClient {
         this.worker.on('message', (m: WorkerMessage) => this.onMessage(m));
         this.worker.on('error', (e) => this.failAll(e instanceof Error ? e : new Error(String(e))));
         this.worker.on('exit', (code) => {
-            if (code !== 0) {
-                this.failAll(new Error(`The CSV worker stopped unexpectedly (exit code ${code}).`));
-            }
+            // Any exit is unexpected unless dispose() ran (failAll ignores disposed clients).
+            this.failAll(new Error(`The CSV worker stopped unexpectedly (exit code ${code}).`));
         });
     }
 
     request<T>(body: RequestBody, onProgress?: (p: Progress) => void): { id: number; promise: Promise<T> } {
         const id = this.nextId++;
+        if (this.dead || this.disposed) {
+            return { id, promise: Promise.reject(new Error('The CSV worker is not running.')) };
+        }
         const promise = new Promise<T>((resolve, reject) => {
             this.pending.set(id, {
                 resolve: resolve as (value: unknown) => void,
@@ -48,11 +53,15 @@ export class WorkerClient {
     }
 
     cancel(target: number): void {
+        if (this.dead || this.disposed) {
+            return;
+        }
         const message: WorkerRequest = { id: 0, type: 'cancel', target };
         this.worker.postMessage(message);
     }
 
     dispose(): void {
+        this.disposed = true;
         this.pending.clear();
         this.lingering.clear();
         void this.worker.terminate();
@@ -95,6 +104,10 @@ export class WorkerClient {
     }
 
     private failAll(error: Error): void {
+        if (this.dead || this.disposed) {
+            return;
+        }
+        this.dead = true;
         const all = [...this.pending.values()];
         this.pending.clear();
         this.lingering.clear();

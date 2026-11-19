@@ -83,3 +83,36 @@ suite('WorkerClient', function () {
         );
     });
 });
+
+suite('WorkerClient lifecycle', function () {
+    this.timeout(20000);
+    const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
+
+    test('dispose does not report a fatal error', async () => {
+        const client = new WorkerClient(workerPath);
+        const fatals: string[] = [];
+        client.onFatal = (m) => fatals.push(m);
+        client.dispose();
+        await sleep(300);
+        assert.deepStrictEqual(fatals, []);
+    });
+
+    test('request after dispose rejects', async () => {
+        const client = new WorkerClient(workerPath);
+        client.dispose();
+        await assert.rejects(client.request({ type: 'nonEmptyColumns' }).promise, /not running/);
+        client.cancel(1);
+    });
+
+    test('an unexpectedly killed worker reports once and later requests reject', async () => {
+        const client = new WorkerClient(workerPath);
+        const fatals: string[] = [];
+        client.onFatal = (m) => fatals.push(m);
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        await (client as any).worker.terminate();
+        await sleep(300);
+        assert.strictEqual(fatals.length, 1);
+        await assert.rejects(client.request({ type: 'nonEmptyColumns' }).promise, /not running/);
+        client.dispose();
+    });
+});

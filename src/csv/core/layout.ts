@@ -141,6 +141,11 @@ export function moveToFirst(l: Layout, column: number): void {
 /** Move `column` to the front and keep it (and any columns already pinned) frozen while scrolling sideways. */
 export function freezeColumn(l: Layout, column: number): void {
     const visible = visibleColumns(l);
+    if (!visible.includes(column)) {
+        // A hidden column cannot be frozen; just move it so it is first once shown.
+        moveToFirst(l, column);
+        return;
+    }
     const alreadyPinned = visible.indexOf(column) !== -1 && visible.indexOf(column) < l.pinned;
     moveToFirst(l, column);
     if (!alreadyPinned) {

@@ -102,4 +102,12 @@ suite('layout', () => {
         assert.deepStrictEqual(l.order, [3, 0, 1, 2, 4]);
         assert.strictEqual(l.pinned, 2);
     });
+    test('freezeColumn on a hidden column only moves it and leaves pinned unchanged', () => {
+        const l = defaultLayout(4, { pageSize: 100, longText: 'truncate', colorMode: 'off' });
+        l.hidden = [2];
+        l.pinned = 1;
+        freezeColumn(l, 2);
+        assert.deepStrictEqual(l.order, [2, 0, 1, 3]);
+        assert.strictEqual(l.pinned, 1);
+    });
 });

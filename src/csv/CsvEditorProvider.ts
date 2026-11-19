@@ -8,17 +8,28 @@ export const XLSX_VIEW_TYPE = 'getUniqueValues.xlsxViewer';
 
 export interface CsvViewerApi {
     sessions: Map<string, CsvSession>;
+    getActive(): CsvSession | undefined;
+    onDidChangeActive: vscode.Event<void>;
 }
+
+const NO_VIEWER_MESSAGE = 'Open a CSV or Excel file in the viewer first.';
 
 class CsvDocument implements vscode.CustomDocument {
     constructor(readonly uri: vscode.Uri) { }
     dispose(): void { }
 }
 
-export function registerCsvViewer(context: vscode.ExtensionContext): CsvViewerApi {
+export function registerCsvViewer(context: vscode.ExtensionContext, onOpen?: (uri: vscode.Uri) => void): CsvViewerApi {
     const sessions = new Map<string, CsvSession>();
     /** The CSV Viewer editor that was most recently active (target of the keybinding commands). */
     let activeSession: CsvSession | undefined;
+    const activeEmitter = new vscode.EventEmitter<void>();
+    const setActive = (next: CsvSession | undefined): void => {
+        if (activeSession !== next) {
+            activeSession = next;
+            activeEmitter.fire();
+        }
+    };
 
     const provider: vscode.CustomReadonlyEditorProvider<CsvDocument> = {
         openCustomDocument: (uri) => new CsvDocument(uri),
@@ -26,19 +37,20 @@ export function registerCsvViewer(context: vscode.ExtensionContext): CsvViewerAp
             const session = new CsvSession(context, document.uri, panel);
             const key = document.uri.toString();
             sessions.set(key, session);
+            onOpen?.(document.uri);
             if (panel.active) {
-                activeSession = session;
+                setActive(session);
             }
             panel.onDidChangeViewState((e) => {
                 if (e.webviewPanel.active) {
-                    activeSession = session;
+                    setActive(session);
                 } else if (activeSession === session) {
-                    activeSession = undefined;
+                    setActive(undefined);
                 }
             });
             panel.onDidDispose(() => {
                 if (activeSession === session) {
-                    activeSession = undefined;
+                    setActive(undefined);
                 }
                 sessions.delete(key);
                 session.dispose();
@@ -85,9 +97,22 @@ export function registerCsvViewer(context: vscode.ExtensionContext): CsvViewerAp
         }),
         vscode.commands.registerCommand('get-unique-values.csv.hideSelectedColumn', () => activeSession?.sendCommand('hideSelectedColumn')),
         vscode.commands.registerCommand('get-unique-values.csv.showAllColumns', () => activeSession?.sendCommand('showAllColumns')),
-        vscode.commands.registerCommand('get-unique-values.csv.chooseSheet', () => activeSession?.chooseSheet()),
-        vscode.commands.registerCommand('get-unique-values.csv.export', () => activeSession?.sendCommand('export')),
+        vscode.commands.registerCommand('get-unique-values.csv.chooseSheet', () => {
+            if (!activeSession) {
+                void vscode.window.showInformationMessage(NO_VIEWER_MESSAGE);
+                return;
+            }
+            return activeSession.chooseSheet();
+        }),
+        vscode.commands.registerCommand('get-unique-values.csv.export', () => {
+            if (!activeSession) {
+                void vscode.window.showInformationMessage(NO_VIEWER_MESSAGE);
+                return;
+            }
+            activeSession.sendCommand('export');
+        }),
+        activeEmitter,
     );
 
-    return { sessions };
+    return { sessions, getActive: () => activeSession, onDidChangeActive: activeEmitter.event };
 }

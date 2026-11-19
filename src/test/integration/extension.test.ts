@@ -48,4 +48,13 @@ suite('Extension integration', function () {
             fs.rmSync(dir, { recursive: true, force: true });
         }
     });
+
+    test('sidebar commands are registered', async () => {
+        const ext = vscode.extensions.getExtension('boopathi08.get-unique-values');
+        await ext?.activate();
+        const all = await vscode.commands.getCommands(true);
+        for (const id of ['get-unique-values.sidebar.openFile', 'get-unique-values.sidebar.clearRecent']) {
+            assert.ok(all.includes(id), `${id} should be registered`);
+        }
+    });
 });

@@ -51,6 +51,34 @@
       {
         "command": "get-unique-values.csv.chooseSheet",
         "title": "CSV Viewer: Choose Excel Sheet…"
+      },
+      {
+        "command": "get-unique-values.sidebar.openFile",
+        "title": "Data Toolkit: Open CSV or Excel File…"
+      },
+      {
+        "command": "get-unique-values.sidebar.openRecent",
+        "title": "Data Toolkit: Open Recent File"
+      },
+      {
+        "command": "get-unique-values.sidebar.toggleFavorite",
+        "title": "Data Toolkit: Toggle Favorite",
+        "icon": "$(star-empty)"
+      },
+      {
+        "command": "get-unique-values.sidebar.removeRecent",
+        "title": "Data Toolkit: Remove from Recent",
+        "icon": "$(close)"
+      },
+      {
+        "command": "get-unique-values.sidebar.clearRecent",
+        "title": "Data Toolkit: Clear Recent Files",
+        "icon": "$(clear-all)"
+      },
+      {
+        "command": "get-unique-values.sidebar.refresh",
+        "title": "Data Toolkit: Refresh",
+        "icon": "$(refresh)"
       }
     ],
     "keybindings": [
@@ -114,6 +142,45 @@
         {
           "command": "get-unique-values.openCsvViewer",
           "when": "resourceExtname =~ /^\\.(csv|tsv|psv|xlsx|xlsm)$/"
+        },
+        {
+          "command": "get-unique-values.sidebar.openRecent",
+          "when": "false"
+        },
+        {
+          "command": "get-unique-values.sidebar.toggleFavorite",
+          "when": "false"
+        },
+        {
+          "command": "get-unique-values.sidebar.removeRecent",
+          "when": "false"
+        },
+        {
+          "command": "get-unique-values.sidebar.clearRecent",
+          "when": "false"
+        },
+        {
+          "command": "get-unique-values.sidebar.refresh",
+          "when": "false"
+        }
+      ],
+      "view/item/context": [
+        {
+          "command": "get-unique-values.sidebar.toggleFavorite",
+          "when": "view == dataToolkit.recent && viewItem == recentFile",
+          "group": "inline"
+        },
+        {
+          "command": "get-unique-values.sidebar.removeRecent",
+          "when": "view == dataToolkit.recent && viewItem == recentFile",
+          "group": "inline"
+        }
+      ],
+      "view/title": [
+        {
+          "command": "get-unique-values.sidebar.clearRecent",
+          "when": "view == dataToolkit.recent",
+          "group": "navigation"
         }
       ]
     },
@@ -197,7 +264,42 @@
           "maximum": 2000
         }
       }
-    }
+    },
+    "viewsContainers": {
+      "activitybar": [
+        {
+          "id": "dataToolkit",
+          "title": "Data Toolkit",
+          "icon": "media/sidebar.svg"
+        }
+      ]
+    },
+    "views": {
+      "dataToolkit": [
+        {
+          "id": "dataToolkit.file",
+          "name": "Current File"
+        },
+        {
+          "id": "dataToolkit.tools",
+          "name": "Tools"
+        },
+        {
+          "id": "dataToolkit.recent",
+          "name": "Recent & Favorites"
+        },
+        {
+          "id": "dataToolkit.presets",
+          "name": "Parse Presets"
+        }
+      ]
+    },
+    "viewsWelcome": [
+      {
+        "view": "dataToolkit.file",
+        "contents": "No CSV or Excel file is open in the viewer.\n[Open a file](command:get-unique-values.sidebar.openFile)"
+      }
+    ]
   },
   "scripts": {
     "vscode:prepublish": "npm run typecheck && node esbuild.mjs --production",

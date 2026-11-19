@@ -86,14 +86,13 @@ suite('WorkerClient', function () {
 
 suite('WorkerClient lifecycle', function () {
     this.timeout(20000);
-    const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
     test('dispose does not report a fatal error', async () => {
         const client = new WorkerClient(workerPath);
         const fatals: string[] = [];
         client.onFatal = (m) => fatals.push(m);
         client.dispose();
-        await sleep(300);
+        await client.terminateForTest(); // resolves once the worker thread has exited
         assert.deepStrictEqual(fatals, []);
     });
 
@@ -108,11 +107,48 @@ suite('WorkerClient lifecycle', function () {
         const client = new WorkerClient(workerPath);
         const fatals: string[] = [];
         client.onFatal = (m) => fatals.push(m);
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        await (client as any).worker.terminate();
-        await sleep(300);
+        await client.terminateForTest();
+        await waitFor(() => fatals.length > 0);
         assert.strictEqual(fatals.length, 1);
+        assert.strictEqual(client.alive, false);
         await assert.rejects(client.request({ type: 'nonEmptyColumns' }).promise, /not running/);
         client.dispose();
+    });
+});
+
+suite('WorkerClient open edge cases', function () {
+    this.timeout(20000);
+    let dir: string;
+    let client: WorkerClient;
+
+    suiteSetup(() => {
+        dir = fs.mkdtempSync(path.join(os.tmpdir(), 'csv-worker-open-'));
+        client = new WorkerClient(workerPath);
+    });
+
+    suiteTeardown(() => {
+        client.dispose();
+        fs.rmSync(dir, { recursive: true, force: true });
+    });
+
+    test('a file with only blank lines opens as empty', async () => {
+        const f = path.join(dir, 'blank.csv');
+        fs.writeFileSync(f, '\n\n\n');
+        const res = await client.request<OpenResult>({ type: 'open', path: f, options: {} }).promise;
+        assert.strictEqual(res.kind, 'empty');
+    });
+
+    test('overlapping opens all resolve and the last file wins', async () => {
+        const files = ['a', 'b', 'c'].map((n) => {
+            const f = path.join(dir, `${n}.csv`);
+            fs.writeFileSync(f, `h\n${n}1\n${n}2\n`);
+            return f;
+        });
+        const results = await Promise.all(
+            files.map((f) => client.request<OpenResult>({ type: 'open', path: f, options: {} }).promise),
+        );
+        assert.deepStrictEqual(results.map((r) => r.kind), ['ok', 'ok', 'ok']);
+        const page = await client.request<PageResult>({ type: 'page', page: 0, pageSize: 10 }).promise;
+        assert.deepStrictEqual(page.rows, [['c1'], ['c2']]);
     });
 });

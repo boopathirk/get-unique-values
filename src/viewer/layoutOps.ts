@@ -132,7 +132,8 @@ export function showOnlyFiltered(): void {
 
 /** Ask the worker which columns contain data; the reply is handled by `applyNonEmpty`. */
 export function requestHideEmpty(): void {
-    post({ type: 'nonEmpty' });
+    state.nonEmptyJob++;
+    post({ type: 'nonEmpty', jobId: state.nonEmptyJob });
 }
 
 export function applyNonEmpty(columns: number[] | null): void {

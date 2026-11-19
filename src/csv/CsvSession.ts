@@ -2,10 +2,10 @@ import * as vscode from 'vscode';
 import * as path from 'path';
 import { randomBytes } from 'crypto';
 import { WorkerClient } from './WorkerClient';
-import { headerHash, sanitizeLayout } from './core/layout';
+import { PAGE_SIZES, headerHash, sanitizeLayout } from './core/layout';
 import type { ColorMode, LongText } from './core/layout';
 import type { Predicate } from './core/predicates';
-import type { HostToView, ViewToHost, ViewerSettings } from './protocol';
+import type { HostToView, ViewCommand, ViewToHost, ViewerSettings } from './protocol';
 import type {
     FileInfo, FilterProgress, FilterResult, IndexProgress, OpenResult, PageResult, ParseOptions, UniqueResult,
 } from './types';
@@ -25,13 +25,28 @@ function statusMessage(result: Exclude<OpenResult, { kind: 'ok' }>): string {
     }
 }
 
+/** Escape glob metacharacters so a file name is matched literally. */
+function escapeGlob(name: string): string {
+    return name.replace(/[[\]{}*?!]/g, (c) => `[${c}]`);
+}
+
+function isValidDelimiter(v: string): boolean {
+    if (v.length !== 1 || v === '"') {
+        return false;
+    }
+    const code = v.charCodeAt(0);
+    return code === 9 || (code >= 32 && code <= 126);
+}
+
 type Item<T> = vscode.QuickPickItem & { value: T };
 
 export class CsvSession implements vscode.Disposable {
-    private readonly worker: WorkerClient;
+    private worker: WorkerClient;
     private readonly disposables: vscode.Disposable[] = [];
-    /** webview job id -> worker request id */
-    private readonly jobs = new Map<number, number>();
+    /** webview job id -> worker request id (the webview counts filter and unique jobs separately). */
+    private readonly filterJobs = new Map<number, number>();
+    private readonly uniqueJobs = new Map<number, number>();
+    private disposed = false;
     private activeFilter: number | undefined;
     private parseOptions: ParseOptions;
     private info: FileInfo | undefined;
@@ -45,8 +60,7 @@ export class CsvSession implements vscode.Disposable {
         private readonly uri: vscode.Uri,
         private readonly panel: vscode.WebviewPanel,
     ) {
-        this.worker = new WorkerClient(path.join(context.extensionPath, 'out', 'csvWorker.js'));
-        this.worker.onFatal = (message) => this.post({ type: 'error', message });
+        this.worker = this.createWorker();
         this.parseOptions = context.workspaceState.get<ParseOptions>(this.key('parse'), {});
     }
 
@@ -63,7 +77,7 @@ export class CsvSession implements vscode.Disposable {
         this.disposables.push(webview.onDidReceiveMessage((m: ViewToHost) => void this.onMessage(m)));
 
         const dir = vscode.Uri.joinPath(this.uri, '..');
-        const watcher = vscode.workspace.createFileSystemWatcher(new vscode.RelativePattern(dir, path.basename(this.uri.fsPath)));
+        const watcher = vscode.workspace.createFileSystemWatcher(new vscode.RelativePattern(dir, escapeGlob(path.basename(this.uri.fsPath))));
         this.disposables.push(
             watcher,
             watcher.onDidChange(() => this.post({ type: 'fileChanged', deleted: false })),
@@ -72,7 +86,23 @@ export class CsvSession implements vscode.Disposable {
         );
     }
 
+    /** Forward a keybinding command to the webview. */
+    sendCommand(name: ViewCommand): void {
+        this.post({ type: 'command', name });
+    }
+
+    private createWorker(): WorkerClient {
+        const worker = new WorkerClient(path.join(this.context.extensionPath, 'out', 'csvWorker.js'));
+        worker.onFatal = (message) => {
+            if (worker === this.worker) {
+                this.post({ type: 'error', message, retry: true });
+            }
+        };
+        return worker;
+    }
+
     dispose(): void {
+        this.disposed = true;
         for (const d of this.disposables) {
             d.dispose();
         }
@@ -82,9 +112,22 @@ export class CsvSession implements vscode.Disposable {
     // ---- messages from the webview -----------------------------------------
 
     private async onMessage(m: ViewToHost): Promise<void> {
+        try {
+            await this.handleMessage(m);
+        } catch (err) {
+            this.post({ type: 'error', message: errorMessage(err) });
+        }
+    }
+
+    private async handleMessage(m: ViewToHost): Promise<void> {
         switch (m.type) {
             case 'ready':
             case 'reload':
+                await this.openFile();
+                break;
+            case 'retry':
+                this.worker.dispose();
+                this.worker = this.createWorker();
                 await this.openFile();
                 break;
             case 'getPage':
@@ -97,7 +140,7 @@ export class CsvSession implements vscode.Disposable {
                 this.startUnique(m.jobId, m.column);
                 break;
             case 'cancel': {
-                const id = this.jobs.get(m.jobId);
+                const id = (m.kind === 'unique' ? this.uniqueJobs : this.filterJobs).get(m.jobId);
                 if (id !== undefined) {
                     this.worker.cancel(id);
                 }
@@ -105,7 +148,7 @@ export class CsvSession implements vscode.Disposable {
             }
             case 'nonEmpty':
                 this.worker.request<number[] | null>({ type: 'nonEmptyColumns' }).promise.then(
-                    (columns) => this.post({ type: 'nonEmpty', columns }),
+                    (columns) => this.post({ type: 'nonEmpty', jobId: m.jobId, columns }),
                     (err) => this.post({ type: 'error', message: errorMessage(err) }),
                 );
                 break;
@@ -130,7 +173,8 @@ export class CsvSession implements vscode.Disposable {
 
     private async openFile(): Promise<void> {
         const gen = ++this.openGen;
-        this.jobs.clear();
+        this.filterJobs.clear();
+        this.uniqueJobs.clear();
         this.activeFilter = undefined;
         try {
             const { promise } = this.worker.request<OpenResult>(
@@ -177,7 +221,7 @@ export class CsvSession implements vscode.Disposable {
 
     private startFilter(jobId: number, predicates: Predicate[]): void {
         if (this.activeFilter !== undefined) {
-            const previous = this.jobs.get(this.activeFilter);
+            const previous = this.filterJobs.get(this.activeFilter);
             if (previous !== undefined) {
                 this.worker.cancel(previous);
             }
@@ -187,24 +231,32 @@ export class CsvSession implements vscode.Disposable {
             { type: 'filter', predicates },
             (p) => this.post({ type: 'filterProgress', jobId, progress: p as FilterProgress }),
         );
-        this.jobs.set(jobId, id);
+        this.filterJobs.set(jobId, id);
         promise
             .then(
                 (result) => this.post({ type: 'filterDone', jobId, result }),
                 (err) => this.post({ type: 'filterError', jobId, message: errorMessage(err) }),
             )
-            .finally(() => this.jobs.delete(jobId));
+            .finally(() => {
+                if (this.filterJobs.get(jobId) === id) {
+                    this.filterJobs.delete(jobId);
+                }
+            });
     }
 
     private startUnique(jobId: number, column: number): void {
         const { id, promise } = this.worker.request<UniqueResult | null>({ type: 'unique', column });
-        this.jobs.set(jobId, id);
+        this.uniqueJobs.set(jobId, id);
         promise
             .then(
                 (result) => this.post({ type: 'unique', jobId, result }),
-                (err) => this.post({ type: 'error', message: errorMessage(err) }),
+                (err) => this.post({ type: 'unique', jobId, result: null, error: errorMessage(err) }),
             )
-            .finally(() => this.jobs.delete(jobId));
+            .finally(() => {
+                if (this.uniqueJobs.get(jobId) === id) {
+                    this.uniqueJobs.delete(jobId);
+                }
+            });
     }
 
     private async chooseParseOptions(): Promise<void> {
@@ -226,7 +278,7 @@ export class CsvSession implements vscode.Disposable {
         if (delimiterValue === 'custom') {
             delimiterValue = await vscode.window.showInputBox({
                 prompt: 'Delimiter character',
-                validateInput: (v) => (v.length === 1 ? undefined : 'Enter exactly one character'),
+                validateInput: (v) => (isValidDelimiter(v) ? undefined : 'Enter one ASCII character (not a quote or newline)'),
             });
             if (delimiterValue === undefined) {
                 return;
@@ -262,7 +314,9 @@ export class CsvSession implements vscode.Disposable {
     // ---- helpers -----------------------------------------------------------
 
     private post(message: HostToView): void {
-        void this.panel.webview.postMessage(message);
+        if (!this.disposed) {
+            void this.panel.webview.postMessage(message);
+        }
     }
 
     private key(kind: string): string {
@@ -275,11 +329,13 @@ export class CsvSession implements vscode.Disposable {
 
     private settings(): ViewerSettings {
         const c = vscode.workspace.getConfiguration('getUniqueValues.csv');
+        const pageSize = c.get<number>('defaultPageSize', 100);
+        const width = Number(c.get<number>('defaultColumnWidth', 300));
         return {
-            defaultPageSize: c.get<number>('defaultPageSize', 100),
+            defaultPageSize: PAGE_SIZES.includes(pageSize) ? pageSize : 100,
             columnColors: c.get<ColorMode>('columnColors', 'headerAndCells'),
             longText: c.get<LongText>('longText', 'truncate'),
-            defaultColumnWidth: c.get<number>('defaultColumnWidth', 300),
+            defaultColumnWidth: Number.isFinite(width) ? Math.min(2000, Math.max(40, width)) : 300,
         };
     }
 

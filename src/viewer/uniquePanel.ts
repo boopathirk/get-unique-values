@@ -13,6 +13,7 @@ export function openUnique(column: number): void {
     state.panel = { kind: 'unique', column };
     state.unique = null;
     state.uniqueLoading = true;
+    state.uniqueError = '';
     state.uniqueJob++;
     needle = '';
     post({ type: 'unique', jobId: state.uniqueJob, column });
@@ -28,8 +29,12 @@ export function renderUnique(root: HTMLElement, column: number): void {
     const result = state.unique;
     if (state.uniqueLoading) {
         const cancel = h('button', {}, 'Cancel');
-        cancel.addEventListener('click', () => post({ type: 'cancel', jobId: state.uniqueJob }));
+        cancel.addEventListener('click', () => post({ type: 'cancel', kind: 'unique', jobId: state.uniqueJob }));
         body.append(h('div', { class: 'message' }, 'Scanning the column…'), cancel);
+        return;
+    }
+    if (state.uniqueError) {
+        body.append(h('div', { class: 'message err' }, `Could not scan the column: ${state.uniqueError}`));
         return;
     }
     if (!result || result.column !== column) {

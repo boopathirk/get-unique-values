@@ -13,6 +13,8 @@ export interface Tuning {
     chunkBytes: number;
     scanBytes: number;
     maxQuoteBytes: number;
+    /** Test-only: called before every index read; may throw to simulate an I/O failure. */
+    beforeIndexRead?: (position: number) => void;
 }
 
 export const DEFAULT_TUNING: Tuning = { chunkBytes: 1 << 20, scanBytes: 4 << 20, maxQuoteBytes: 1 << 20 };
@@ -42,6 +44,7 @@ export class CsvEngine {
     private viewComplete = true;
     private readonly uniqueCache = new Map<number, UniqueResult>();
     private nonEmptyCache: number[] | undefined;
+    private indexError: Error | undefined;
     private readonly indexFinished: Promise<void>;
     private finishIndex: () => void = () => undefined;
 
@@ -101,8 +104,22 @@ export class CsvEngine {
         return { kind: 'ready' };
     }
 
-    /** Stream the whole file once, building the row index. Resolves when indexing is complete (or cancelled). */
+    /**
+     * Stream the whole file once, building the row index. Resolves when indexing is complete (or cancelled).
+     * On an I/O error every waiter is released, later reads rethrow the error, and the error is rethrown here.
+     */
     async index(onProgress: (p: IndexProgress) => void, token: CancelToken): Promise<void> {
+        try {
+            await this.indexBody(onProgress, token);
+        } catch (err) {
+            this.indexError = err instanceof Error ? err : new Error(String(err));
+            this.notify();
+            this.finishIndex();
+            throw this.indexError;
+        }
+    }
+
+    private async indexBody(onProgress: (p: IndexProgress) => void, token: CancelToken): Promise<void> {
         const buf = Buffer.allocUnsafe(this.tuning.chunkBytes);
         let pos = this.bom;
         let lastReport = 0;
@@ -111,6 +128,7 @@ export class CsvEngine {
                 if (token.cancelled) {
                     return;
                 }
+                this.tuning.beforeIndexRead?.(pos);
                 const { bytesRead } = await this.file.read(buf, 0, buf.length, pos);
                 if (bytesRead === 0) {
                     break;
@@ -140,11 +158,23 @@ export class CsvEngine {
         onProgress(this.progress(this.size));
     }
 
+    /** True once the whole file has been indexed. */
+    get indexed(): boolean {
+        return this.done;
+    }
+
+    private throwIfIndexFailed(): void {
+        if (this.indexError) {
+            throw this.indexError;
+        }
+    }
+
     async getInfo(): Promise<FileInfo> {
         if (this.info) {
             return this.info;
         }
         await this.waitForRows(1);
+        this.throwIfIndexFailed();
         const first = this.readable() > 0 ? (await this.readRows(0, 1))[0] : [];
         const header = this.hasHeader
             ? first.map((name, i) => name.trim() || `Column ${i + 1}`)
@@ -162,6 +192,7 @@ export class CsvEngine {
 
     async readPage(page: number, pageSize: number): Promise<PageResult> {
         const startRow = page * pageSize;
+        this.throwIfIndexFailed();
         if (this.view) {
             const view = this.view;
             const complete = this.viewComplete;
@@ -169,6 +200,7 @@ export class CsvEngine {
             return { rowNumbers, rows: await this.readDataRows(rowNumbers), total: view.length, complete };
         }
         await this.waitForRows(this.headerRows + startRow + pageSize);
+        this.throwIfIndexFailed();
         const total = this.dataRowCount;
         const count = Math.max(0, Math.min(total, startRow + pageSize) - startRow);
         const rowNumbers = Array.from({ length: count }, (_, i) => startRow + i);
@@ -181,16 +213,26 @@ export class CsvEngine {
         token: CancelToken,
         onProgress: (p: FilterProgress) => void,
     ): Promise<FilterResult> {
-        await this.indexFinished;
         const compiled = compilePredicates(predicates); // throws SyntaxError on a bad regex, before the view changes
         if (compiled.empty) {
             this.view = null;
             this.viewComplete = true;
+            await this.indexFinished;
+            this.throwIfIndexFailed();
             return { matches: this.dataRowCount, complete: true };
         }
+        // Take over the view right away so pages requested while indexing never show unfiltered rows.
         const result = new ResultSet();
         this.view = result;
         this.viewComplete = false;
+        await this.indexFinished;
+        this.throwIfIndexFailed();
+        if (token.cancelled || this.view !== result) {
+            if (this.view === result) {
+                this.viewComplete = true; // cancelled by the user: keep the (empty) partial view
+            }
+            return { matches: this.view === result ? result.length : 0, complete: false };
+        }
         const runs: Run[] = compiled.badRowsOnly ? coalesce(this.badDataRows()) : [[0, this.dataRowCount]];
         const total = runs.reduce((n, r) => n + r[1], 0);
         let scannedNow = 0;
@@ -213,7 +255,8 @@ export class CsvEngine {
             },
         );
         const complete = outcome !== 'cancelled';
-        if (complete && this.view === result) {
+        if (this.view === result) {
+            // A user cancel keeps the partial view; paging must not wait for a scan that will never finish.
             this.viewComplete = true;
         }
         onProgress({ matches: result.length, scanned: scannedNow, total });
@@ -226,6 +269,7 @@ export class CsvEngine {
         onProgress?: (scanned: number, total: number) => void,
     ): Promise<UniqueResult | null> {
         await this.indexFinished;
+        this.throwIfIndexFailed();
         const cached = this.uniqueCache.get(column);
         if (cached) {
             return cached;
@@ -259,6 +303,7 @@ export class CsvEngine {
     /** Columns that contain at least one non-blank value. Stops scanning once every column has one. */
     async nonEmptyColumns(token: CancelToken): Promise<number[] | null> {
         await this.indexFinished;
+        this.throwIfIndexFailed();
         if (this.nonEmptyCache) {
             return this.nonEmptyCache;
         }
@@ -321,7 +366,7 @@ export class CsvEngine {
     }
 
     private waitForRows(n: number): Promise<void> {
-        if (this.done || this.readable() >= n) {
+        if (this.done || this.indexError || this.readable() >= n) {
             return Promise.resolve();
         }
         return new Promise<void>((resolve) => this.waiters.push({ rows: n, resolve }));
@@ -330,7 +375,7 @@ export class CsvEngine {
     private notify(): void {
         const available = this.readable();
         this.waiters = this.waiters.filter((w) => {
-            if (this.done || available >= w.rows) {
+            if (this.done || this.indexError || available >= w.rows) {
                 w.resolve();
                 return false;
             }

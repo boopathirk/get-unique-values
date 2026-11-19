@@ -62,11 +62,14 @@ export const state = {
     filtering: null as FilterProgress | null,
     filterError: '',
 
+    nonEmptyJob: 0,
+
     // side panel
     panel: null as Panel,
     unique: null as UniqueResult | null,
     uniqueLoading: false,
     uniqueJob: 0,
+    uniqueError: '',
 };
 
 export function buildPredicates(): Predicate[] {
@@ -114,5 +117,7 @@ export function resetForNewFile(): void {
     state.panel = null;
     state.unique = null;
     state.uniqueLoading = false;
+    state.uniqueError = '';
     state.uniqueJob++;
+    state.nonEmptyJob++;
 }

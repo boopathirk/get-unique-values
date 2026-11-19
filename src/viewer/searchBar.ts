@@ -25,7 +25,7 @@ export function mountSearch(root: HTMLElement): void {
 
     const progress = h('span', { class: 'muted' });
     const cancel = h('button', { title: 'Stop the running search' }, 'Cancel');
-    cancel.addEventListener('click', () => post({ type: 'cancel', jobId: state.filterJob }));
+    cancel.addEventListener('click', () => post({ type: 'cancel', kind: 'filter', jobId: state.filterJob }));
     const error = h('span', { class: 'err' });
     const chips = h('span', { class: 'chips' });
     const clearAll = h('button', { title: 'Remove the search and every filter' }, 'Clear all');

@@ -33,6 +33,39 @@ function errorMessage(err: unknown): string {
     return err instanceof Error ? err.message : String(err);
 }
 
+let openChain: Promise<void> = Promise.resolve();
+
+async function doOpen(req: Extract<WorkerRequest, { type: 'open' }>): Promise<void> {
+    if (indexToken) {
+        indexToken.cancelled = true;
+    }
+    await engine?.dispose();
+    const next = new CsvEngine(req.path, req.options);
+    engine = next;
+    const opened = await next.open();
+    if (opened.kind !== 'ready') {
+        send({ type: 'result', id: req.id, data: opened });
+        return;
+    }
+    const token: CancelToken = { cancelled: false };
+    indexToken = token;
+    next.index((p) => send({ type: 'progress', id: req.id, data: p }), token)
+        .catch((err) => send({ type: 'fatal', message: errorMessage(err) }));
+    let info;
+    try {
+        info = await next.getInfo();
+    } catch (err) {
+        token.cancelled = true;
+        await next.dispose();
+        throw err;
+    }
+    if (info.columnCount === 0 && next.indexed) {
+        send({ type: 'result', id: req.id, data: { kind: 'empty' } });
+        return;
+    }
+    send({ type: 'result', id: req.id, data: { kind: 'ok', info } });
+}
+
 async function handle(req: WorkerRequest): Promise<void> {
     try {
         switch (req.type) {
@@ -44,23 +77,10 @@ async function handle(req: WorkerRequest): Promise<void> {
                 return;
             }
             case 'open': {
-                if (indexToken) {
-                    indexToken.cancelled = true;
-                }
-                await engine?.dispose();
-                const next = new CsvEngine(req.path, req.options);
-                engine = next;
-                const opened = await next.open();
-                if (opened.kind !== 'ready') {
-                    send({ type: 'result', id: req.id, data: opened });
-                    return;
-                }
-                const token: CancelToken = { cancelled: false };
-                indexToken = token;
-                next.index((p) => send({ type: 'progress', id: req.id, data: p }), token)
-                    .catch((err) => send({ type: 'fatal', message: errorMessage(err) }));
-                const info = await next.getInfo();
-                send({ type: 'result', id: req.id, data: { kind: 'ok', info } });
+                // Serialise opens so overlapping requests never leak an engine or file descriptor.
+                const run = openChain.then(() => doOpen(req));
+                openChain = run.catch(() => undefined);
+                await run;
                 return;
             }
             case 'page':

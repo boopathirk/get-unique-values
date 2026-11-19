@@ -32,6 +32,14 @@
       {
         "command": "get-unique-values.openCsvViewer",
         "title": "Open in CSV Viewer"
+      },
+      {
+        "command": "get-unique-values.csv.hideSelectedColumn",
+        "title": "CSV Viewer: Hide Selected Column"
+      },
+      {
+        "command": "get-unique-values.csv.showAllColumns",
+        "title": "CSV Viewer: Show All Columns"
       }
     ],
     "keybindings": [
@@ -40,6 +48,18 @@
         "key": "ctrl+alt+u",
         "mac": "cmd+alt+u",
         "when": "editorTextFocus"
+      },
+      {
+        "command": "get-unique-values.csv.hideSelectedColumn",
+        "key": "ctrl+shift+h",
+        "mac": "cmd+shift+h",
+        "when": "activeCustomEditorId == 'getUniqueValues.csvViewer'"
+      },
+      {
+        "command": "get-unique-values.csv.showAllColumns",
+        "key": "ctrl+shift+u",
+        "mac": "cmd+shift+u",
+        "when": "activeCustomEditorId == 'getUniqueValues.csvViewer'"
       }
     ],
     "menus": {
@@ -52,7 +72,7 @@
       "editor/title": [
         {
           "command": "get-unique-values.openCsvViewer",
-          "when": "resourceExtname =~ /^\\.(csv|tsv|psv)$/",
+          "when": "resourceExtname =~ /^\\.(csv|tsv|psv)$/ && activeCustomEditorId != 'getUniqueValues.csvViewer'",
           "group": "navigation"
         }
       ],
@@ -61,6 +81,20 @@
           "command": "get-unique-values.openCsvViewer",
           "when": "resourceExtname =~ /^\\.(csv|tsv|psv)$/",
           "group": "navigation"
+        }
+      ],
+      "commandPalette": [
+        {
+          "command": "get-unique-values.csv.hideSelectedColumn",
+          "when": "false"
+        },
+        {
+          "command": "get-unique-values.csv.showAllColumns",
+          "when": "false"
+        },
+        {
+          "command": "get-unique-values.openCsvViewer",
+          "when": "resourceExtname =~ /^\\.(csv|tsv|psv)$/"
         }
       ]
     },
@@ -121,7 +155,8 @@
           "type": "number",
           "default": 300,
           "minimum": 80,
-          "description": "Default column width in pixels."
+          "description": "Default column width in pixels.",
+          "maximum": 2000
         }
       }
     }

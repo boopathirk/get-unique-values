@@ -3,6 +3,7 @@ import * as fs from 'fs';
 import * as os from 'os';
 import * as path from 'path';
 import { CsvEngine, Tuning } from '../../csv/core/engine';
+import type { Predicate } from '../../csv/core/predicates';
 import type { CancelToken, IndexProgress, ParseOptions } from '../../csv/types';
 
 const TINY: Tuning = { chunkBytes: 7, scanBytes: 16, maxQuoteBytes: 1 << 20 };
@@ -179,5 +180,105 @@ suite('CsvEngine', () => {
             engines.push(engine);
             assert.strictEqual((await engine.open()).kind, kind);
         }
+    });
+
+    suite('before indexing finishes', () => {
+        const mode = { caseSensitive: false, wholeCell: false, regex: false };
+        const blue = (): Predicate[] => [{ kind: 'search', query: 'blue', column: null, mode }];
+
+        async function opened(tuning: Tuning = TINY): Promise<CsvEngine> {
+            const engine = new CsvEngine(write(SAMPLE), {}, tuning);
+            engines.push(engine);
+            assert.strictEqual((await engine.open()).kind, 'ready');
+            return engine;
+        }
+
+        test('a search issued while indexing never shows unfiltered rows', async () => {
+            const engine = await opened();
+            const pending = engine.filter(blue(), live(), noop);
+            const during = await engine.readPage(0, 10);
+            assert.deepStrictEqual(during, { rowNumbers: [], rows: [], total: 0, complete: false });
+            const indexing = engine.index(noop, live());
+            assert.deepStrictEqual(await pending, { matches: 2, complete: true });
+            await indexing;
+            assert.deepStrictEqual((await engine.readPage(0, 10)).rowNumbers, [0, 3]);
+        });
+
+        test('a bad regex rejects immediately, before indexing finishes', async () => {
+            const engine = await opened();
+            const regex = { ...mode, regex: true };
+            await assert.rejects(engine.filter([{ kind: 'search', query: '(', column: null, mode: regex }], live(), noop), SyntaxError);
+        });
+
+        test('overlapping filters: the cancelled first one leaves the second owning the view', async () => {
+            const engine = await opened();
+            const first = { cancelled: false };
+            const f1 = engine.filter(blue(), first, noop);
+            first.cancelled = true;
+            const f2 = engine.filter([{ kind: 'columnIn', column: 2, values: [''] }], live(), noop);
+            const indexing = engine.index(noop, live());
+            assert.strictEqual((await f1).complete, false);
+            assert.deepStrictEqual(await f2, { matches: 1, complete: true });
+            await indexing;
+            const page = await engine.readPage(0, 10);
+            assert.deepStrictEqual(page.rowNumbers, [2]);
+            assert.strictEqual(page.complete, true);
+        });
+
+        test('clearing the filter during indexing leaves the view null', async () => {
+            const engine = await opened();
+            const f1 = engine.filter(blue(), live(), noop);
+            const cleared = engine.filter([], live(), noop);
+            const indexing = engine.index(noop, live());
+            assert.strictEqual((await f1).complete, false);
+            assert.deepStrictEqual(await cleared, { matches: 4, complete: true });
+            await indexing;
+            const page = await engine.readPage(0, 10);
+            assert.strictEqual(page.total, 4);
+            assert.deepStrictEqual(page.rowNumbers, [0, 1, 2, 3]);
+        });
+
+        test('readPage beyond the indexed rows resolves once indexing completes', async () => {
+            const engine = await opened();
+            const page = engine.readPage(0, 100);
+            const indexing = engine.index(noop, live());
+            const result = await page;
+            await indexing;
+            assert.strictEqual(result.total, 4);
+            assert.strictEqual(result.rows.length, 4);
+            assert.strictEqual(result.complete, true);
+        });
+
+        test('an index I/O error releases every waiter and later reads rethrow it', async () => {
+            const engine = await opened({
+                ...TINY,
+                beforeIndexRead: (pos) => {
+                    if (pos >= 14) {
+                        throw new Error('disk gone');
+                    }
+                },
+            });
+            const waiting = Promise.allSettled([
+                engine.readPage(0, 100),
+                engine.filter(blue(), live(), noop),
+                engine.uniqueValues(0, live()),
+                engine.getInfo(),
+            ]);
+            await assert.rejects(engine.index(noop, live()), /disk gone/);
+            for (const outcome of await waiting) {
+                assert.strictEqual(outcome.status, 'rejected');
+                assert.match(String((outcome as PromiseRejectedResult).reason), /disk gone/);
+            }
+            await assert.rejects(engine.nonEmptyColumns(live()), /disk gone/);
+            await assert.rejects(engine.readPage(0, 10), /disk gone/);
+        });
+    });
+
+    test('after a user cancel the partial view counts as complete for paging', async () => {
+        const { engine } = await load(SAMPLE);
+        const mode = { caseSensitive: false, wholeCell: false, regex: false };
+        const result = await engine.filter([{ kind: 'search', query: 'a', column: null, mode }], { cancelled: true }, noop);
+        assert.strictEqual(result.complete, false);
+        assert.strictEqual((await engine.readPage(0, 10)).complete, true);
     });
 });

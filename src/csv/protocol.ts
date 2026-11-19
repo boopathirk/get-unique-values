@@ -32,27 +32,32 @@ export interface ViewerSettings {
     defaultColumnWidth: number;
 }
 
+/** Commands the host forwards to the webview (keybindings contributed in package.json). */
+export type ViewCommand = 'hideSelectedColumn' | 'showAllColumns';
+
 export type HostToView =
     | { type: 'opened'; info: FileInfo; layout: Layout; settings: ViewerSettings; fileName: string }
     | { type: 'status'; kind: 'empty' | 'binary' | 'unsupported-encoding' | 'error'; message: string }
-    | { type: 'error'; message: string }
+    | { type: 'error'; message: string; retry?: boolean }
     | { type: 'indexProgress'; progress: IndexProgress }
     | { type: 'page'; reqId: number; result: PageResult }
     | { type: 'filterProgress'; jobId: number; progress: FilterProgress }
     | { type: 'filterDone'; jobId: number; result: FilterResult }
     | { type: 'filterError'; jobId: number; message: string }
-    | { type: 'unique'; jobId: number; result: UniqueResult | null }
-    | { type: 'nonEmpty'; columns: number[] | null }
-    | { type: 'fileChanged'; deleted: boolean };
+    | { type: 'unique'; jobId: number; result: UniqueResult | null; error?: string }
+    | { type: 'nonEmpty'; jobId: number; columns: number[] | null }
+    | { type: 'fileChanged'; deleted: boolean }
+    | { type: 'command'; name: ViewCommand };
 
 export type ViewToHost =
     | { type: 'ready' }
     | { type: 'reload' }
+    | { type: 'retry' }
     | { type: 'getPage'; reqId: number; page: number; pageSize: number }
     | { type: 'filter'; jobId: number; predicates: Predicate[] }
     | { type: 'unique'; jobId: number; column: number }
-    | { type: 'cancel'; jobId: number }
-    | { type: 'nonEmpty' }
+    | { type: 'cancel'; kind: 'filter' | 'unique'; jobId: number }
+    | { type: 'nonEmpty'; jobId: number }
     | { type: 'chooseParseOptions' }
     | { type: 'saveLayout'; layout: Layout }
     | { type: 'openInEditor'; text: string; language: string }

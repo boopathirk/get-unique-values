@@ -130,11 +130,14 @@ window.addEventListener('message', (event: MessageEvent<HostToView>) => {
             if (m.jobId === state.uniqueJob) {
                 state.unique = m.result;
                 state.uniqueLoading = false;
+                state.uniqueError = m.error ?? '';
                 emit('panel');
             }
             break;
         case 'nonEmpty':
-            applyNonEmpty(m.columns);
+            if (m.jobId === state.nonEmptyJob) {
+                applyNonEmpty(m.columns);
+            }
             break;
         case 'fileChanged':
             state.banner = {

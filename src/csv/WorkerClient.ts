@@ -39,6 +39,10 @@ export class WorkerClient {
         if (this.dead || this.disposed) {
             return { id, promise: Promise.reject(new Error('The CSV worker is not running.')) };
         }
+        if (body.type === 'open') {
+            // A new open replaces the previous file: drop index-progress handlers of the old one.
+            this.lingering.clear();
+        }
         const promise = new Promise<T>((resolve, reject) => {
             this.pending.set(id, {
                 resolve: resolve as (value: unknown) => void,
@@ -67,7 +71,20 @@ export class WorkerClient {
         void this.worker.terminate();
     }
 
+    /** True while the worker thread is usable (not disposed and has not died). */
+    get alive(): boolean {
+        return !this.dead && !this.disposed;
+    }
+
+    /** Test-only: kill the worker thread without calling dispose(), simulating a crash. */
+    terminateForTest(): Promise<number> {
+        return this.worker.terminate();
+    }
+
     private onMessage(m: WorkerMessage): void {
+        if (this.disposed) {
+            return;
+        }
         switch (m.type) {
             case 'result': {
                 const p = this.pending.get(m.id);

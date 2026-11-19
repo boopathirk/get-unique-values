@@ -1,4 +1,17 @@
-# Get Unique Values & CSV Viewer
+# Data Toolkit
+
+## Install and open it in VS Code
+
+1. Open VS Code → **Extensions** (`Ctrl+Shift+X`, `Cmd+Shift+X` on macOS).
+2. Search for **Data Toolkit** (publisher `boopathi08`) and click **Install**. Or run in a terminal:
+   ```
+   code --install-extension boopathi08.get-unique-values
+   ```
+   Marketplace page: <https://marketplace.visualstudio.com/items?itemName=boopathi08.get-unique-values>
+3. **Open a CSV in the viewer:** right-click a `.csv` / `.tsv` / `.psv` file in the Explorer → **Open in CSV Viewer**, or click the button in the editor title bar, or use **Open With… → CSV Viewer**. The normal text editor stays the default.
+4. **Remove duplicate lines:** open any file, press `Ctrl+Alt+U` (`Cmd+Alt+U` on macOS), or run **Get Unique Values** from the Command Palette (`Ctrl+Shift+P`).
+
+Updates arrive automatically; VS Code shows the new version in the Extensions view.
 
 Two tools in one extension:
 

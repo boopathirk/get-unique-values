@@ -213,7 +213,7 @@ A `FileSystemWatcher` on the document shows a "File changed on disk — Reload" 
 
 Changes to `package.json`:
 - `version` → `0.1.0`
-- `displayName` → `Get Unique Values & CSV Viewer`
+- `displayName` → `Data Toolkit` (renamed from `Get Unique Values & CSV Viewer` so the name still fits as more tools are added; the extension ID is unchanged)
 - `description` → "Remove duplicate lines, and view huge CSV files fast: pagination, search, unique values per column, filters, column colours."
 - add keywords `csv`, `csv viewer`, `large csv`, `tsv`
 - extension ID `get-unique-values` and publisher `boopathi08` unchanged, so existing installs update

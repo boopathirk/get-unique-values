@@ -49,6 +49,10 @@ export async function exportToFile(
 
 function closeStream(stream: fs.WriteStream): Promise<void> {
     return new Promise<void>((resolve) => {
+        if (stream.closed) {
+            resolve(); // already closed (e.g. after a write error): 'close' will not fire again
+            return;
+        }
         stream.once('close', () => resolve());
         stream.destroy();
     });

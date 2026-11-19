@@ -64,7 +64,9 @@ table.csv th, table.csv td {
 }
 table.csv th {
     position: sticky; top: 0; z-index: 2; text-align: left; font-weight: 600; white-space: nowrap;
-    padding-right: 24px; color: var(--col-fg, inherit); background: var(--col-bg, var(--vscode-editor-background));
+    padding-right: 24px; color: var(--col-fg, inherit);
+    /* Opaque even when --col-bg is translucent or transparent (high contrast): sticky cells must hide what scrolls under them. */
+    background: linear-gradient(var(--col-bg, transparent), var(--col-bg, transparent)), var(--vscode-editor-background);
 }
 table.csv th .name { display: block; overflow: hidden; text-overflow: ellipsis; }
 table.csv th .filtered { color: var(--vscode-charts-orange); margin-left: 4px; }
@@ -75,12 +77,13 @@ table.csv th.rownum, table.csv td.rownum { position: sticky; left: 0; text-align
 table.csv th.rownum { z-index: 4; }
 table.csv td.rownum { z-index: 1; }
 table.csv th.pinned { z-index: 3; }
-table.csv td.pinned { position: sticky; z-index: 1; background: var(--col-tint, var(--vscode-editor-background)); }
+table.csv td.pinned { position: sticky; z-index: 1; }
 table.csv td.cell .v { overflow: hidden; }
 table.csv.longtext-truncate td.cell .v { white-space: nowrap; text-overflow: ellipsis; }
 table.csv.longtext-wrap td.cell .v { display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; white-space: pre-wrap; word-break: break-word; }
 table.csv.longtext-full td.cell .v { white-space: pre-wrap; word-break: break-word; }
 table.csv td.cell.tinted { background: var(--col-tint); box-shadow: inset 3px 0 0 var(--col-edge); }
+table.csv td.cell.pinned { background: linear-gradient(var(--col-tint, transparent), var(--col-tint, transparent)), var(--vscode-editor-background); }
 table.csv td.cell.selected { outline: 2px solid var(--vscode-focusBorder); outline-offset: -2px; }
 body.hc table.csv th.colhead { border-bottom: 3px solid var(--col-edge); }
 

@@ -34,12 +34,16 @@ export function h<K extends keyof HTMLElementTagNameMap>(
     return el;
 }
 
-export function debounce<A extends unknown[]>(fn: (...args: A) => void, ms: number): (...args: A) => void {
+export type Debounced<A extends unknown[]> = ((...args: A) => void) & { cancel: () => void };
+
+export function debounce<A extends unknown[]>(fn: (...args: A) => void, ms: number): Debounced<A> {
     let timer: number | undefined;
-    return (...args: A) => {
+    const run = ((...args: A) => {
         window.clearTimeout(timer);
         timer = window.setTimeout(() => fn(...args), ms);
-    };
+    }) as Debounced<A>;
+    run.cancel = () => window.clearTimeout(timer);
+    return run;
 }
 
 export function fmt(n: number): string {
@@ -50,6 +54,10 @@ export interface MenuItem {
     label: string;
     run: () => void;
     disabled?: boolean;
+}
+
+export function isMenuOpen(): boolean {
+    return document.getElementById('ctx-menu') !== null;
 }
 
 export function closeMenu(): void {

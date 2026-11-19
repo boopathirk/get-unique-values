@@ -16,10 +16,10 @@ export function mountSidePanel(root: HTMLElement): void {
                 renderUnique(root, panel.column);
                 break;
             case 'detail':
-                renderDetail(root, panel.row, panel.col);
+                renderDetail(root, panel.rowNumber, panel.col);
                 break;
             case 'record':
-                renderRecord(root, panel.row);
+                renderRecord(root, panel.rowNumber);
                 break;
         }
     };
@@ -27,11 +27,11 @@ export function mountSidePanel(root: HTMLElement): void {
     on('render', render);
     on<number>('openUnique', openUnique);
     on<{ row: number; col: number }>('openDetail', ({ row, col }) => {
-        state.panel = { kind: 'detail', row, col };
+        state.panel = { kind: 'detail', rowNumber: state.rowNumbers[row] ?? row, col };
         emit('panel');
     });
     on<number>('openRecord', (row) => {
-        state.panel = { kind: 'record', row };
+        state.panel = { kind: 'record', rowNumber: state.rowNumbers[row] ?? row };
         emit('panel');
     });
 }

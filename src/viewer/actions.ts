@@ -36,12 +36,27 @@ function closeRowPanels(): void {
 export function goToPage(page: number): void {
     const max = state.complete ? totalPages() - 1 : Number.MAX_SAFE_INTEGER;
     closeRowPanels();
+    state.selected = null;
     loadPage(Math.max(0, Math.min(page, max)));
     emit('status');
 }
 
 /** Send the current search + column filters + bad-rows flag to the worker as one AND-ed filter. */
 export function applyFilters(): void {
+    const s = state.search;
+    if (s.regex && s.query !== '') {
+        try {
+            new RegExp(s.query);
+        } catch (err) {
+            // Report a bad regex inline; nothing is sent to the worker (it would reject it anyway).
+            state.filterError = err instanceof Error ? err.message : String(err);
+            state.filterActive = false;
+            state.filterRunning = false;
+            state.filtering = null;
+            emit('status');
+            return;
+        }
+    }
     const predicates = buildPredicates();
     state.filterJob++;
     state.filterError = '';
@@ -60,6 +75,7 @@ export function clearColumnFilter(column: number): void {
     delete state.columnFilters[column];
     applyFilters();
     emit('table');
+    emit('panel');
 }
 
 export function clearAllFilters(): void {
@@ -68,6 +84,7 @@ export function clearAllFilters(): void {
     state.badRowsOnly = false;
     applyFilters();
     emit('table');
+    emit('panel');
 }
 
 /** Persist the layout (per file) and re-render everything. */

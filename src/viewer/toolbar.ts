@@ -1,8 +1,8 @@
 import { PAGE_SIZES } from '../csv/core/layout';
 import type { ColorMode, LongText } from '../csv/core/layout';
 import { applyFilters, emit, goToPage, on, totalPages } from './actions';
-import { fmt, h } from './dom';
-import { resetLayout, setColorMode, setLongText, setPageSize } from './layoutOps';
+import { fmt, h, showMenu } from './dom';
+import { resetLayout, setColorMode, setLongText, setPageSize, showAll, toggleColumn } from './layoutOps';
 import { post, state } from './state';
 
 function button(label: string, title: string, onClick: () => void): HTMLButtonElement {
@@ -42,6 +42,12 @@ export function mountToolbar(root: HTMLElement): { searchRow: HTMLElement } {
     const last = button('⏭', 'Last page', () => goToPage(totalPages() - 1));
 
     const rowInput = h('input', { class: 'page-input', type: 'text', inputmode: 'numeric', placeholder: 'row #', 'aria-label': 'Go to row number' });
+    // While a filter is active the number is an index within the matches, not a file row.
+    const relabelRowInput = (): void => {
+        const word = state.filterActive ? 'match' : 'row';
+        rowInput.placeholder = `${word} #`;
+        rowInput.setAttribute('aria-label', `Go to ${word} number`);
+    };
     rowInput.addEventListener('keydown', (e) => {
         const n = parseInt(rowInput.value, 10);
         if (e.key === 'Enter' && Number.isFinite(n) && n >= 1) {
@@ -62,13 +68,29 @@ export function mountToolbar(root: HTMLElement): { searchRow: HTMLElement } {
     );
     const columnsBtn = h('button', { 'data-picker-anchor': true, title: 'Show, hide, reorder and pin columns' }, 'Columns');
     columnsBtn.addEventListener('click', () => emit('toggleColumns', columnsBtn));
+    const hiddenBtn = h('button', { class: 'chip', title: 'Some columns are hidden. Click to show them.' });
+    hiddenBtn.hidden = true;
+    hiddenBtn.addEventListener('click', () => {
+        const { info, layout } = state;
+        if (!info || !layout) {
+            return;
+        }
+        const rect = hiddenBtn.getBoundingClientRect();
+        showMenu(rect.left, rect.bottom, [
+            ...layout.hidden.map((c) => ({
+                label: info.header[c] ?? `Column ${c + 1}`,
+                run: () => toggleColumn(c),
+            })),
+            { label: 'Show all', run: showAll },
+        ]);
+    });
     const resetBtn = button('Reset view', 'Restore default columns, widths and display options', resetLayout);
 
     root.append(
         searchRow,
         h('div', { class: 'row' },
             parseChip, first, prev, pageInput, pageTotal, next, last, rowInput,
-            sizeSelect, textSelect, colorSelect, columnsBtn, resetBtn),
+            sizeSelect, textSelect, colorSelect, columnsBtn, hiddenBtn, resetBtn),
     );
 
     const update = (): void => {
@@ -77,6 +99,7 @@ export function mountToolbar(root: HTMLElement): { searchRow: HTMLElement } {
         for (const el of [parseChip, first, prev, pageInput, next, last, rowInput, sizeSelect, textSelect, colorSelect, columnsBtn, resetBtn]) {
             (el as HTMLButtonElement).disabled = !ready;
         }
+        relabelRowInput();
         if (!info || !layout) {
             parseChip.textContent = '…';
             return;
@@ -93,7 +116,8 @@ export function mountToolbar(root: HTMLElement): { searchRow: HTMLElement } {
         sizeSelect.value = String(layout.pageSize);
         textSelect.value = layout.longText;
         colorSelect.value = layout.colorMode;
-        columnsBtn.textContent = layout.hidden.length > 0 ? `Columns (${layout.hidden.length} hidden)` : 'Columns';
+        hiddenBtn.hidden = layout.hidden.length === 0;
+        hiddenBtn.textContent = `${layout.hidden.length} hidden`;
     };
     on('render', update);
     on('table', update);

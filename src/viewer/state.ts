@@ -17,14 +17,15 @@ export function post(message: ViewToHost): void {
 
 export type Panel =
     | { kind: 'unique'; column: number }
-    | { kind: 'detail'; row: number; col: number }
-    | { kind: 'record'; row: number }
+    | { kind: 'detail'; rowNumber: number; col: number }
+    | { kind: 'record'; rowNumber: number }
     | null;
 
 export interface Banner {
     kind: 'info' | 'error';
     message: string;
     reload?: boolean;
+    retry?: boolean;
 }
 
 function emptySearch() {
@@ -92,6 +93,11 @@ export function buildPredicates(): Predicate[] {
         predicates.push({ kind: 'badRows' });
     }
     return predicates;
+}
+
+/** Show a dismissible info banner. */
+export function showInfo(message: string): void {
+    state.banner = { kind: 'info', message };
 }
 
 /** Reset everything tied to the previously opened file (not `indexing`: progress may arrive before `opened`). */

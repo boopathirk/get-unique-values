@@ -18,11 +18,14 @@ export function mountColumnPicker(): void {
             close();
         }
     }, true);
-    window.addEventListener('keydown', (e) => {
-        if (e.key === 'Escape' && popover) {
-            close();
-        }
-    });
+}
+
+export function isPickerOpen(): boolean {
+    return popover !== null;
+}
+
+export function closePicker(): void {
+    close();
 }
 
 function close(): void {
@@ -73,11 +76,6 @@ function open(anchor: HTMLElement): void {
             setPinned(n);
         }
     };
-    pinInput.addEventListener('keydown', (e) => {
-        if (e.key === 'Enter') {
-            pinApply();
-        }
-    });
     pinInput.addEventListener('change', pinApply);
 
     const setSelect = h('select', { 'aria-label': 'Saved column sets' });

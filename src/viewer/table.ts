@@ -2,13 +2,14 @@ import { columnColor } from '../csv/core/colors';
 import type { ColumnColor } from '../csv/core/colors';
 import { visibleColumns } from '../csv/core/layout';
 import { rowToCsv, rowToJson, truncateText } from '../csv/core/textUtil';
-import { clearColumnFilter, emit, on, saveLayout } from './actions';
+import { applyFilters, clearColumnFilter, emit, on, saveLayout } from './actions';
 import { MenuItem, h, showMenu } from './dom';
 import { hideColumn, setPinned } from './layoutOps';
 import { post, state } from './state';
 
 const ROWNUM_WIDTH = 72;
 let wrap: HTMLElement;
+let renderedPage = -1;
 
 export function mountTable(root: HTMLElement): void {
     wrap = root;
@@ -44,10 +45,10 @@ function cellOf(e: Event): { row: number; col: number } | null {
 
 export function select(row: number, col: number): void {
     state.selected = { row, col };
-    updateSelection();
+    updateSelection(true);
 }
 
-function updateSelection(): void {
+function updateSelection(scroll: boolean): void {
     wrap.querySelector('td.selected')?.classList.remove('selected');
     const sel = state.selected;
     if (!sel) {
@@ -55,7 +56,9 @@ function updateSelection(): void {
     }
     const td = wrap.querySelector<HTMLElement>(`td.cell[data-r="${sel.row}"][data-c="${sel.col}"]`);
     td?.classList.add('selected');
-    td?.scrollIntoView({ block: 'nearest', inline: 'nearest' });
+    if (scroll) {
+        td?.scrollIntoView({ block: 'nearest', inline: 'nearest' });
+    }
 }
 
 function rowMenu(row: number, col: number | undefined): MenuItem[] {
@@ -90,6 +93,9 @@ function headerMenu(column: number): MenuItem[] {
             label: 'Search in this column',
             run: () => {
                 state.search.column = column;
+                if (state.search.query !== '') {
+                    applyFilters();
+                }
                 emit('status');
                 emit('focusSearch');
             },
@@ -106,7 +112,14 @@ function headerMenu(column: number): MenuItem[] {
     return items;
 }
 
-function startResize(e: MouseEvent, column: number, startWidth: number, colEl: HTMLTableColElement, table: HTMLElement): void {
+function startResize(
+    e: MouseEvent,
+    column: number,
+    startWidth: number,
+    colEl: HTMLTableColElement,
+    table: HTMLElement,
+    onWidth: (column: number, width: number) => void,
+): void {
     e.preventDefault();
     e.stopPropagation();
     const startX = e.clientX;
@@ -116,6 +129,7 @@ function startResize(e: MouseEvent, column: number, startWidth: number, colEl: H
         width = Math.max(40, Math.min(2000, startWidth + ev.clientX - startX));
         colEl.style.width = `${width}px`;
         table.style.width = `${tableStart + width - startWidth}px`;
+        onWidth(column, width);
     };
     const up = (): void => {
         window.removeEventListener('mousemove', move);
@@ -146,7 +160,9 @@ function emptyMessage(): string {
 }
 
 function renderTable(): void {
-    const scrollTop = wrap.scrollTop;
+    // Keep the scroll position while re-rendering the same page; a new page starts at the top.
+    const scrollTop = state.page === renderedPage ? wrap.scrollTop : 0;
+    renderedPage = state.page;
     const scrollLeft = wrap.scrollLeft;
     wrap.replaceChildren();
     if (state.status) {
@@ -165,18 +181,23 @@ function renderTable(): void {
     }
 
     const width = (c: number): number => layout.widths[String(c)] ?? settings.defaultColumnWidth;
-    const left = new Map<number, number>();
-    let acc = ROWNUM_WIDTH;
-    for (const c of cols.slice(0, layout.pinned)) {
-        left.set(c, acc);
-        acc += width(c);
-    }
+    const pinnedCols = cols.slice(0, layout.pinned);
+    const pinned = new Set<number>(pinnedCols);
     const colored = layout.colorMode !== 'off';
     const tinted = layout.colorMode === 'headerAndCells' && state.theme !== 'high-contrast';
     const colors = new Map<number, ColumnColor>(cols.map((c): [number, ColumnColor] => [c, columnColor(c, state.theme)]));
 
     const table = h('table', { class: `csv longtext-${layout.longText}` });
     table.style.width = `${ROWNUM_WIDTH + cols.reduce((n, c) => n + width(c), 0)}px`;
+    // Sticky offsets of pinned columns live in per-column CSS variables so a live resize can move later ones.
+    const setPinnedOffsets = (resized?: number, resizedWidth = 0): void => {
+        let acc = ROWNUM_WIDTH;
+        for (const c of pinnedCols) {
+            table.style.setProperty(`--left-${c}`, `${acc}px`);
+            acc += c === resized ? resizedWidth : width(c);
+        }
+    };
+    setPinnedOffsets();
 
     const colgroup = h('colgroup');
     const rowNumCol = h('col');
@@ -194,7 +215,7 @@ function renderTable(): void {
     const headRow = h('tr', {}, h('th', { class: 'rownum' }, '#'));
     for (const c of cols) {
         const name = info.header[c] ?? `Column ${c + 1}`;
-        const th = h('th', { class: `colhead${left.has(c) ? ' pinned' : ''}`, title: name });
+        const th = h('th', { class: `colhead${pinned.has(c) ? ' pinned' : ''}`, title: name });
         const color = colors.get(c);
         if (colored && color) {
             paint(th, color);
@@ -208,7 +229,7 @@ function renderTable(): void {
         const handle = h('span', { class: 'resize' });
         const colEl = colEls.get(c);
         if (colEl) {
-            handle.addEventListener('mousedown', (e) => startResize(e, c, width(c), colEl, table));
+            handle.addEventListener('mousedown', (e) => startResize(e, c, width(c), colEl, table, setPinnedOffsets));
         }
         const filtered = (state.columnFilters[c] ?? []).length > 0;
         th.append(
@@ -216,9 +237,8 @@ function renderTable(): void {
             menuBtn,
             handle,
         );
-        const offset = left.get(c);
-        if (offset !== undefined) {
-            th.style.left = `${offset}px`;
+        if (pinned.has(c)) {
+            th.style.left = `var(--left-${c})`;
         }
         headRow.append(th);
     }
@@ -230,7 +250,7 @@ function renderTable(): void {
         const tr = h('tr', { 'data-r': r }, h('td', { class: 'rownum' }, String((state.rowNumbers[r] ?? r) + 1)));
         for (const c of cols) {
             const value = fields[c] ?? '';
-            const td = h('td', { class: `cell${tinted ? ' tinted' : ''}${left.has(c) ? ' pinned' : ''}`, 'data-r': r, 'data-c': c },
+            const td = h('td', { class: `cell${tinted ? ' tinted' : ''}${pinned.has(c) ? ' pinned' : ''}`, 'data-r': r, 'data-c': c },
                 h('div', { class: 'v' }, value));
             if (value.length > 30) {
                 td.title = truncateText(value, 500);
@@ -240,9 +260,8 @@ function renderTable(): void {
                 td.style.setProperty('--col-tint', color.cellTint);
                 td.style.setProperty('--col-edge', color.edge);
             }
-            const offset = left.get(c);
-            if (offset !== undefined) {
-                td.style.left = `${offset}px`;
+            if (pinned.has(c)) {
+                td.style.left = `var(--left-${c})`;
             }
             tr.append(td);
         }
@@ -255,5 +274,5 @@ function renderTable(): void {
     }
     wrap.scrollTop = scrollTop;
     wrap.scrollLeft = scrollLeft;
-    updateSelection();
+    updateSelection(false);
 }

@@ -1,7 +1,7 @@
 import { columnColor } from '../csv/core/colors';
 import { guessLanguage, prettyJson, rowToCsv, rowToJson, truncateText } from '../csv/core/textUtil';
 import { emit } from './actions';
-import { h } from './dom';
+import { fmt, h } from './dom';
 import { panelHeader } from './panelCommon';
 import { post, state } from './state';
 
@@ -15,16 +15,23 @@ function tabs(active: 'value' | 'record', row: number, col: number | null): HTML
     return h('div', { class: 'tabs' }, value, record);
 }
 
-export function renderDetail(root: HTMLElement, row: number, col: number): void {
+const MAX_SHOWN = 100_000;
+
+/** The panel remembers the file row number; find where that row sits on the current page. */
+function pageRow(rowNumber: number): number {
+    return state.rowNumbers.indexOf(rowNumber);
+}
+
+export function renderDetail(root: HTMLElement, fileRow: number, col: number): void {
     const info = state.info;
+    const row = pageRow(fileRow);
     const value = state.rows[row]?.[col];
     const name = info?.header[col] ?? `Column ${col + 1}`;
-    const rowNumber = (state.rowNumbers[row] ?? row) + 1;
-    root.append(panelHeader(`${name} · row ${rowNumber}`));
+    root.append(panelHeader(`${name} · row ${fileRow + 1}`));
     const body = h('div', { class: 'side-body' });
     root.append(body);
     if (value === undefined) {
-        body.append(h('div', { class: 'message' }, 'This row is no longer on the current page.'));
+        body.append(h('div', { class: 'message' }, 'This row is not on this page.'));
         return;
     }
 
@@ -47,18 +54,24 @@ export function renderDetail(root: HTMLElement, row: number, col: number): void 
         });
         tools.append(format);
     }
-    body.append(tabs('value', row, col), tools, h('pre', { class: 'detail-value' }, text));
+    const shown = text.length > MAX_SHOWN ? text.slice(0, MAX_SHOWN) : text;
+    body.append(tabs('value', row, col), tools);
+    if (shown.length < text.length) {
+        body.append(h('div', { class: 'muted' },
+            `Showing the first ${fmt(MAX_SHOWN)} characters — use Open in editor tab for the full value`));
+    }
+    body.append(h('pre', { class: 'detail-value' }, shown));
 }
 
-export function renderRecord(root: HTMLElement, row: number): void {
+export function renderRecord(root: HTMLElement, fileRow: number): void {
     const { info, layout } = state;
+    const row = pageRow(fileRow);
     const fields = state.rows[row];
-    const rowNumber = (state.rowNumbers[row] ?? row) + 1;
-    root.append(panelHeader(`Record · row ${rowNumber}`));
+    root.append(panelHeader(`Record · row ${fileRow + 1}`));
     const body = h('div', { class: 'side-body' });
     root.append(body);
     if (!info || !layout || !fields) {
-        body.append(h('div', { class: 'message' }, 'This row is no longer on the current page.'));
+        body.append(h('div', { class: 'message' }, 'This row is not on this page.'));
         return;
     }
 

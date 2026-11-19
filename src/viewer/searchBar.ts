@@ -32,12 +32,17 @@ export function mountSearch(root: HTMLElement): void {
     clearAll.addEventListener('click', clearAllFilters);
 
     const runSearch = (): void => {
+        if (input.value === state.search.query) {
+            return; // already applied (e.g. the debounce fired before Enter)
+        }
         state.search.query = input.value;
         applyFilters();
     };
-    input.addEventListener('input', debounce(runSearch, 300));
+    const debounced = debounce(runSearch, 300);
+    input.addEventListener('input', debounced);
     input.addEventListener('keydown', (e) => {
         if (e.key === 'Enter') {
+            debounced.cancel();
             runSearch();
         }
     });

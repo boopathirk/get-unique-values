@@ -2,10 +2,10 @@ import type { ThemeKind } from '../csv/core/colors';
 import type { HostToView } from '../csv/protocol';
 import { emit, loadPage } from './actions';
 import { mountBanner } from './banner';
-import { mountColumnPicker } from './columnPicker';
+import { closePicker, mountColumnPicker } from './columnPicker';
 import { h } from './dom';
 import { mountKeyboard } from './keyboard';
-import { applyNonEmpty } from './layoutOps';
+import { applyNonEmpty, hideColumn, showAll } from './layoutOps';
 import { mountSearch } from './searchBar';
 import { mountSidePanel } from './sidePanel';
 import { post, resetForNewFile, state } from './state';
@@ -56,6 +56,7 @@ window.addEventListener('message', (event: MessageEvent<HostToView>) => {
     const m = event.data;
     switch (m.type) {
         case 'opened':
+            closePicker();
             resetForNewFile();
             state.fileName = m.fileName;
             state.info = m.info;
@@ -70,7 +71,7 @@ window.addEventListener('message', (event: MessageEvent<HostToView>) => {
             emit('render');
             break;
         case 'error':
-            state.banner = { kind: 'error', message: m.message };
+            state.banner = { kind: 'error', message: m.message, retry: m.retry };
             emit('status');
             break;
         case 'indexProgress': {
@@ -137,6 +138,15 @@ window.addEventListener('message', (event: MessageEvent<HostToView>) => {
         case 'nonEmpty':
             if (m.jobId === state.nonEmptyJob) {
                 applyNonEmpty(m.columns);
+            }
+            break;
+        case 'command':
+            if (m.name === 'hideSelectedColumn') {
+                if (state.selected) {
+                    hideColumn(state.selected.col);
+                }
+            } else {
+                showAll();
             }
             break;
         case 'fileChanged':

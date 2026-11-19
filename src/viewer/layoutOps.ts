@@ -1,7 +1,7 @@
 import { defaultLayout, matchColumns, moveItem, visibleColumns } from '../csv/core/layout';
 import type { ColorMode, Layout, LongText } from '../csv/core/layout';
-import { loadPage, saveLayout } from './actions';
-import { post, state } from './state';
+import { emit, loadPage, saveLayout } from './actions';
+import { post, showInfo, state } from './state';
 
 export function mutate(fn: (layout: Layout) => void): void {
     if (state.layout) {
@@ -104,7 +104,16 @@ export function moveColumn(from: number, to: number): void {
     });
 }
 
+function notify(message: string): void {
+    showInfo(message);
+    emit('status');
+}
+
 function showOnly(keep: Set<number>): void {
+    if (!state.layout || !state.layout.order.some((c) => keep.has(c))) {
+        notify('No columns match.');
+        return;
+    }
     mutate((l) => {
         l.hidden = l.order.filter((c) => !keep.has(c));
         clampPinned(l);
@@ -125,9 +134,7 @@ export function showOnlyFiltered(): void {
     if (state.search.column !== null) {
         keep.add(state.search.column);
     }
-    if (keep.size > 0) {
-        showOnly(keep);
-    }
+    showOnly(keep);
 }
 
 /** Ask the worker which columns contain data; the reply is handled by `applyNonEmpty`. */
@@ -136,10 +143,27 @@ export function requestHideEmpty(): void {
     post({ type: 'nonEmpty', jobId: state.nonEmptyJob });
 }
 
+/** Hide only the empty columns; columns the user already hid stay hidden. */
 export function applyNonEmpty(columns: number[] | null): void {
-    if (columns) {
-        showOnly(new Set(columns));
+    const layout = state.layout;
+    if (!columns || !layout) {
+        return;
     }
+    const keep = new Set(columns);
+    const hidden = new Set(layout.hidden);
+    for (const c of layout.order) {
+        if (!keep.has(c)) {
+            hidden.add(c);
+        }
+    }
+    if (layout.order.every((c) => hidden.has(c))) {
+        notify('Every column would be hidden, so nothing was changed.');
+        return;
+    }
+    mutate((l) => {
+        l.hidden = l.order.filter((c) => hidden.has(c));
+        clampPinned(l);
+    });
 }
 
 export function saveSet(name: string): void {

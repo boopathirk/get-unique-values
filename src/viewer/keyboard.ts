@@ -1,9 +1,10 @@
 import { visibleColumns } from '../csv/core/layout';
 import { emit, goToPage } from './actions';
-import { closeMenu } from './dom';
+import { closeMenu, isMenuOpen } from './dom';
+import { closePicker, isPickerOpen } from './columnPicker';
 import { hideColumn, showAll } from './layoutOps';
 import { closePanel } from './panelCommon';
-import { post, state } from './state';
+import { state } from './state';
 import { select } from './table';
 
 function move(rowDelta: number, colDelta: number): void {
@@ -15,7 +16,11 @@ function move(rowDelta: number, colDelta: number): void {
     if (cols.length === 0) {
         return;
     }
-    const current = state.selected ?? { row: 0, col: cols[0] };
+    if (!state.selected) {
+        select(0, cols[0]); // the first arrow press only picks the starting cell
+        return;
+    }
+    const current = state.selected;
     const colIndex = Math.max(0, cols.indexOf(current.col));
     const row = Math.max(0, Math.min(state.rows.length - 1, current.row + rowDelta));
     const col = cols[Math.max(0, Math.min(cols.length - 1, colIndex + colDelta))];
@@ -23,6 +28,20 @@ function move(rowDelta: number, colDelta: number): void {
 }
 
 export function mountKeyboard(): void {
+    // Ctrl/Cmd+C copies the selected cell unless the user selected text or is typing in a field.
+    document.addEventListener('copy', (e) => {
+        const active = document.activeElement;
+        if (active instanceof HTMLInputElement || active instanceof HTMLTextAreaElement) {
+            return;
+        }
+        const sel = state.selected;
+        if (!sel || window.getSelection()?.toString()) {
+            return;
+        }
+        e.clipboardData?.setData('text/plain', state.rows[sel.row]?.[sel.col] ?? '');
+        e.preventDefault();
+    });
+
     window.addEventListener('keydown', (e) => {
         const target = e.target as HTMLElement;
         const typing = target instanceof HTMLInputElement || target instanceof HTMLSelectElement || target instanceof HTMLTextAreaElement
@@ -48,21 +67,17 @@ export function mountKeyboard(): void {
             return;
         }
         if (e.key === 'Escape') {
-            closeMenu();
-            if (state.panel) {
+            // One layer per press: context menu, then column picker, then side panel.
+            if (isMenuOpen()) {
+                closeMenu();
+            } else if (isPickerOpen()) {
+                closePicker();
+            } else if (state.panel) {
                 closePanel();
             }
             return;
         }
         if (typing) {
-            return;
-        }
-        if (mod && key === 'c') {
-            const sel = state.selected;
-            if (sel && !window.getSelection()?.toString()) {
-                e.preventDefault();
-                post({ type: 'copy', text: state.rows[sel.row]?.[sel.col] ?? '' });
-            }
             return;
         }
         switch (e.key) {

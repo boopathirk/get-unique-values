@@ -48,6 +48,7 @@ function buildList(result: UniqueResult, column: number): HTMLElement[] {
     const list = h('div', { class: 'u-list' });
     const summary = h('div', { class: 'u-summary' });
     const filterInput = h('input', { type: 'search', placeholder: 'Filter values…', 'aria-label': 'Filter values' });
+    filterInput.value = needle;
     const sortLabel = (): string => (sortBy === 'count' ? 'Sort: count' : 'Sort: value');
     const sortBtn = h('button', { title: 'Change the sort order' }, sortLabel());
     const clearBtn = h('button', { title: 'Remove the filter on this column' }, 'Clear selection');

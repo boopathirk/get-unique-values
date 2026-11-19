@@ -1,0 +1,106 @@
+import { Worker } from 'worker_threads';
+import type { FilterProgress, IndexProgress } from './types';
+import type { RequestBody, WorkerMessage, WorkerRequest } from './protocol';
+
+type Progress = IndexProgress | FilterProgress;
+
+interface Pending {
+    resolve: (value: unknown) => void;
+    reject: (error: Error) => void;
+    onProgress?: (p: Progress) => void;
+    keepProgress: boolean;
+    doneSeen: boolean;
+}
+
+export class WorkerClient {
+    private readonly worker: Worker;
+    private nextId = 1;
+    private readonly pending = new Map<number, Pending>();
+    /** Progress handlers that outlive their request (index progress after `open` resolved). */
+    private readonly lingering = new Map<number, (p: Progress) => void>();
+
+    onFatal: (message: string) => void = () => undefined;
+
+    constructor(workerPath: string) {
+        this.worker = new Worker(workerPath);
+        this.worker.on('message', (m: WorkerMessage) => this.onMessage(m));
+        this.worker.on('error', (e) => this.failAll(e instanceof Error ? e : new Error(String(e))));
+        this.worker.on('exit', (code) => {
+            if (code !== 0) {
+                this.failAll(new Error(`The CSV worker stopped unexpectedly (exit code ${code}).`));
+            }
+        });
+    }
+
+    request<T>(body: RequestBody, onProgress?: (p: Progress) => void): { id: number; promise: Promise<T> } {
+        const id = this.nextId++;
+        const promise = new Promise<T>((resolve, reject) => {
+            this.pending.set(id, {
+                resolve: resolve as (value: unknown) => void,
+                reject,
+                onProgress,
+                keepProgress: body.type === 'open',
+                doneSeen: false,
+            });
+        });
+        this.worker.postMessage({ ...body, id } as WorkerRequest);
+        return { id, promise };
+    }
+
+    cancel(target: number): void {
+        const message: WorkerRequest = { id: 0, type: 'cancel', target };
+        this.worker.postMessage(message);
+    }
+
+    dispose(): void {
+        this.pending.clear();
+        this.lingering.clear();
+        void this.worker.terminate();
+    }
+
+    private onMessage(m: WorkerMessage): void {
+        switch (m.type) {
+            case 'result': {
+                const p = this.pending.get(m.id);
+                this.pending.delete(m.id);
+                if (p?.onProgress && p.keepProgress && !p.doneSeen) {
+                    this.lingering.set(m.id, p.onProgress);
+                }
+                p?.resolve(m.data);
+                break;
+            }
+            case 'failure': {
+                const p = this.pending.get(m.id);
+                this.pending.delete(m.id);
+                this.lingering.delete(m.id);
+                p?.reject(new Error(m.message));
+                break;
+            }
+            case 'progress': {
+                const p = this.pending.get(m.id);
+                const handler = p?.onProgress ?? this.lingering.get(m.id);
+                handler?.(m.data);
+                if ('done' in m.data && m.data.done) {
+                    if (p) {
+                        p.doneSeen = true;
+                    }
+                    this.lingering.delete(m.id);
+                }
+                break;
+            }
+            case 'fatal':
+                this.onFatal(m.message);
+                break;
+        }
+    }
+
+    private failAll(error: Error): void {
+        const all = [...this.pending.values()];
+        this.pending.clear();
+        this.lingering.clear();
+        for (const p of all) {
+            p.reject(error);
+        }
+        this.onFatal(error.message);
+    }
+}

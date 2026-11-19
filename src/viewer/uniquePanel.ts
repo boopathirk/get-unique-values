@@ -3,13 +3,14 @@ import type { UniqueEntry, UniqueResult } from '../csv/types';
 import { applyFilters, emit } from './actions';
 import { debounce, fmt, h } from './dom';
 import { panelHeader } from './panelCommon';
-import { post, state } from './state';
+import { cancelAnalysis, post, state } from './state';
 
 const MAX_ROWS = 500;
 let sortBy: 'count' | 'value' = 'count';
 let needle = '';
 
 export function openUnique(column: number): void {
+    cancelAnalysis();
     state.panel = { kind: 'unique', column };
     state.unique = null;
     state.uniqueLoading = true;

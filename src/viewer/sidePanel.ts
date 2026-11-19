@@ -1,7 +1,7 @@
 import { emit, on } from './actions';
 import { renderDetail, renderRecord } from './detailPanel';
 import { renderDuplicates, openDuplicates } from './duplicatesPanel';
-import { state } from './state';
+import { cancelAnalysis, state } from './state';
 import { openStats, renderStats } from './statsPanel';
 import { openUnique, renderUnique } from './uniquePanel';
 
@@ -37,10 +37,12 @@ export function mountSidePanel(root: HTMLElement): void {
     on<number>('openStats', openStats);
     on<{ mode: 'rows' | 'columns'; columns?: number[] }>('openDuplicates', openDuplicates);
     on<{ row: number; col: number }>('openDetail', ({ row, col }) => {
+        cancelAnalysis();
         state.panel = { kind: 'detail', rowNumber: state.rowNumbers[row] ?? row, col };
         emit('panel');
     });
     on<number>('openRecord', (row) => {
+        cancelAnalysis();
         state.panel = { kind: 'record', rowNumber: state.rowNumbers[row] ?? row };
         emit('panel');
     });

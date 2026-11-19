@@ -1,9 +1,10 @@
 import { emit } from './actions';
 import { fmt, h } from './dom';
 import { panelHeader } from './panelCommon';
-import { post, state } from './state';
+import { cancelAnalysis, post, state } from './state';
 
 export function openStats(column: number): void {
+    cancelAnalysis();
     state.panel = { kind: 'stats', column };
     state.stats = null;
     state.analysisLoading = true;

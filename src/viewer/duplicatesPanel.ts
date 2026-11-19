@@ -3,13 +3,21 @@ import { applyFilters, emit } from './actions';
 import { fmt, h } from './dom';
 import { hideColumn } from './layoutOps';
 import { panelHeader } from './panelCommon';
-import { post, state } from './state';
+import { cancelAnalysis, post, state } from './state';
 
 const MAX_ROWS = 500;
+const MAX_CHECKS = 300;
+let listScroll = 0;
+let rowScanStarted = false;
 
 const name = (c: number): string => state.info?.header[c] ?? `Column ${c + 1}`;
 
 function reset(mode: 'rows' | 'columns', selected: number[]): void {
+    cancelAnalysis();
+    rowScanStarted = false;
+    if (state.dup.mode !== mode) {
+        listScroll = 0;
+    }
     state.panel = { kind: 'duplicates' };
     state.dup.mode = mode;
     state.dup.selected = selected;
@@ -20,6 +28,8 @@ function reset(mode: 'rows' | 'columns', selected: number[]): void {
 }
 
 function scanRows(): void {
+    cancelAnalysis();
+    rowScanStarted = true;
     state.duplicates = null;
     state.analysisLoading = true;
     state.analysisError = '';
@@ -29,6 +39,7 @@ function scanRows(): void {
 }
 
 function scanColumns(): void {
+    cancelAnalysis();
     state.analysisLoading = true;
     state.analysisJob++;
     post({ type: 'duplicateColumns', jobId: state.analysisJob });
@@ -36,6 +47,8 @@ function scanColumns(): void {
 
 export function openDuplicates(arg: { mode: 'rows' | 'columns'; columns?: number[] }): void {
     reset(arg.mode, arg.columns ?? []);
+    state.dup.filter = '';
+    listScroll = 0;
     if (arg.mode === 'columns') {
         scanColumns();
     } else if (state.dup.selected.length > 0) {
@@ -79,38 +92,62 @@ export function renderDuplicates(root: HTMLElement): void {
 function renderRows(body: HTMLElement): void {
     const info = state.info;
     body.append(h('div', { class: 'u-summary' }, 'Rows are duplicates when the chosen columns have the same values.'));
+    const loading = state.analysisLoading;
     const filter = h('input', { type: 'search', placeholder: 'Filter columns…', 'aria-label': 'Filter columns' });
+    filter.value = state.dup.filter;
     const list = h('div', { class: 'col-check' });
-    const labels: { el: HTMLElement; text: string }[] = [];
-    const boxes: HTMLInputElement[] = [];
+    const boxes = new Map<number, HTMLInputElement>();
     const sync = (): void => {
         find.disabled = state.dup.selected.length === 0 || state.analysisLoading;
     };
-    (info?.header ?? []).forEach((text, c) => {
-        const box = h('input', { type: 'checkbox' });
-        box.checked = state.dup.selected.includes(c);
-        box.addEventListener('change', () => {
-            const s = state.dup.selected.filter((x) => x !== c);
-            if (box.checked) {
-                s.push(c);
+    const header = info?.header ?? [];
+    const hint = h('div', { class: 'u-summary' });
+    const fill = (): void => {
+        const q = state.dup.filter.toLowerCase();
+        list.replaceChildren();
+        boxes.clear();
+        let shown = 0;
+        let matched = 0;
+        header.forEach((text, c) => {
+            if (q !== '' && !text.toLowerCase().includes(q)) {
+                return;
             }
-            state.dup.selected = s.sort((a, b) => a - b);
-            sync();
+            matched++;
+            if (shown >= MAX_CHECKS) {
+                return;
+            }
+            shown++;
+            const box = h('input', { type: 'checkbox' });
+            box.checked = state.dup.selected.includes(c);
+            box.disabled = loading;
+            box.addEventListener('change', () => {
+                const s = state.dup.selected.filter((x) => x !== c);
+                if (box.checked) {
+                    s.push(c);
+                }
+                state.dup.selected = s.sort((x, y) => x - y);
+                sync();
+            });
+            boxes.set(c, box);
+            list.append(h('label', {}, box, h('span', {}, text)));
         });
-        boxes.push(box);
-        const el = h('label', {}, box, h('span', {}, text));
-        labels.push({ el, text: text.toLowerCase() });
-        list.append(el);
+        hint.textContent = matched > shown
+            ? (q === '' ? `Showing the first ${MAX_CHECKS} of ${fmt(header.length)} columns — type to narrow` : `Showing the first ${MAX_CHECKS} of ${fmt(matched)} matching columns — type to narrow`)
+            : '';
+        hint.hidden = hint.textContent === '';
+    };
+    list.addEventListener('scroll', () => {
+        listScroll = list.scrollTop;
     });
     filter.addEventListener('input', () => {
-        const q = filter.value.toLowerCase();
-        for (const l of labels) {
-            l.el.hidden = q !== '' && !l.text.includes(q);
-        }
+        state.dup.filter = filter.value;
+        listScroll = 0;
+        fill();
     });
+    fill();
     const all = h('button', {}, 'All columns');
     all.addEventListener('click', () => {
-        state.dup.selected = (info?.header ?? []).map((_, i) => i);
+        state.dup.selected = header.map((_, i) => i);
         boxes.forEach((b) => (b.checked = true));
         sync();
     });
@@ -126,7 +163,10 @@ function renderRows(body: HTMLElement): void {
             scanRows();
         }
     });
-    body.append(filter, list, h('div', { class: 'dup-modes' }, all, none, find));
+    all.disabled = loading;
+    none.disabled = loading;
+    body.append(filter, list, hint, h('div', { class: 'dup-modes' }, all, none, find));
+    list.scrollTop = listScroll;
     sync();
 
     if (state.analysisLoading) {
@@ -138,6 +178,10 @@ function renderRows(body: HTMLElement): void {
         return;
     }
     const r = state.duplicates;
+    if (!r && rowScanStarted) {
+        body.append(h('div', { class: 'message' }, 'The scan was cancelled. Choose "Find duplicates" again to retry.'));
+        return;
+    }
     if (!r || r.columns.length !== state.dup.selected.length || r.columns.some((c, i) => c !== state.dup.selected[i])) {
         return;
     }

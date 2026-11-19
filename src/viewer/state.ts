@@ -75,7 +75,7 @@ export const state = {
     uniqueError: '',
     stats: null as ColumnStats | null,
     duplicates: null as DuplicateResult | null,
-    dup: { mode: 'rows' as 'rows' | 'columns', selected: [] as number[] },
+    dup: { mode: 'rows' as 'rows' | 'columns', selected: [] as number[], filter: '' },
     duplicateColumns: null as DuplicateColumnsResult | null,
     keyFilter: null as { columns: number[]; values: string[] } | null,
     analysisLoading: false,
@@ -106,6 +106,15 @@ export function buildPredicates(skipSearch = false): Predicate[] {
         predicates.push({ kind: 'keyEquals', columns: state.keyFilter.columns, values: state.keyFilter.values });
     }
     return predicates;
+}
+
+/** Cancel a running analysis (if any) and make its late reply stale. */
+export function cancelAnalysis(): void {
+    if (state.analysisLoading) {
+        post({ type: 'cancel', kind: 'analysis', jobId: state.analysisJob });
+        state.analysisJob++;
+        state.analysisLoading = false;
+    }
 }
 
 /** Show a dismissible info banner. */
@@ -143,7 +152,7 @@ export function resetForNewFile(): void {
     state.duplicates = null;
     state.keyFilter = null;
     state.duplicateColumns = null;
-    state.dup = { mode: 'rows', selected: [] };
+    state.dup = { mode: 'rows', selected: [], filter: '' };
     state.analysisLoading = false;
     state.analysisError = '';
     state.analysisJob++;

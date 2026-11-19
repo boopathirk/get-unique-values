@@ -1,8 +1,9 @@
 import { emit } from './actions';
 import { h } from './dom';
-import { state } from './state';
+import { cancelAnalysis, state } from './state';
 
 export function closePanel(): void {
+    cancelAnalysis();
     state.panel = null;
     emit('panel');
 }

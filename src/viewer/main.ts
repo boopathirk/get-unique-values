@@ -4,6 +4,7 @@ import { emit, loadPage } from './actions';
 import { mountBanner } from './banner';
 import { h } from './dom';
 import { mountSearch } from './searchBar';
+import { mountSidePanel } from './sidePanel';
 import { post, resetForNewFile, state } from './state';
 import { mountTable } from './table';
 import { mountStatus, mountToolbar } from './toolbar';
@@ -42,7 +43,7 @@ mountBanner(bannerEl);
 mountTable(tableEl);
 mountStatus(statusEl);
 mountSearch(searchRow);
-void sideEl; // filled in Task 13
+mountSidePanel(sideEl);
 
 new MutationObserver(applyTheme).observe(document.body, { attributes: true, attributeFilter: ['class'] });
 

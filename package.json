@@ -1,9 +1,9 @@
 {
   "name": "get-unique-values",
-  "displayName": "get-unique-values",
-  "publisher": "boopathi",
-  "description": "Remove duplicate lines from the file or selection",
-  "version": "0.0.1",
+  "displayName": "Get Unique Values & CSV Viewer",
+  "publisher": "boopathi08",
+  "description": "Remove duplicate lines, and view huge CSV files fast: pagination, search, unique values per column, filters, column colours.",
+  "version": "0.1.0",
   "engines": {
     "vscode": "^1.99.0"
   },
@@ -16,10 +16,11 @@
     "duplicate",
     "remove duplicates",
     "clean",
-    "format"
-  ],
-  "activationEvents": [
-    "onStartupFinished"
+    "format",
+    "csv",
+    "csv viewer",
+    "large csv",
+    "tsv"
   ],
   "main": "./out/extension.js",
   "contributes": {
@@ -27,6 +28,18 @@
       {
         "command": "get-unique-values.run",
         "title": "Get Unique Values (Remove Duplicates & Empty Lines)"
+      },
+      {
+        "command": "get-unique-values.openCsvViewer",
+        "title": "Open in CSV Viewer"
+      },
+      {
+        "command": "get-unique-values.csv.hideSelectedColumn",
+        "title": "CSV Viewer: Hide Selected Column"
+      },
+      {
+        "command": "get-unique-values.csv.showAllColumns",
+        "title": "CSV Viewer: Show All Columns"
       }
     ],
     "keybindings": [
@@ -35,6 +48,18 @@
         "key": "ctrl+alt+u",
         "mac": "cmd+alt+u",
         "when": "editorTextFocus"
+      },
+      {
+        "command": "get-unique-values.csv.hideSelectedColumn",
+        "key": "ctrl+shift+h",
+        "mac": "cmd+shift+h",
+        "when": "activeCustomEditorId == 'getUniqueValues.csvViewer'"
+      },
+      {
+        "command": "get-unique-values.csv.showAllColumns",
+        "key": "ctrl+shift+u",
+        "mac": "cmd+shift+u",
+        "when": "activeCustomEditorId == 'getUniqueValues.csvViewer'"
       }
     ],
     "menus": {
@@ -43,16 +68,111 @@
           "command": "get-unique-values.run",
           "group": "modification"
         }
+      ],
+      "editor/title": [
+        {
+          "command": "get-unique-values.openCsvViewer",
+          "when": "resourceExtname =~ /^\\.(csv|tsv|psv)$/ && activeCustomEditorId != 'getUniqueValues.csvViewer'",
+          "group": "navigation"
+        }
+      ],
+      "explorer/context": [
+        {
+          "command": "get-unique-values.openCsvViewer",
+          "when": "resourceExtname =~ /^\\.(csv|tsv|psv)$/",
+          "group": "navigation"
+        }
+      ],
+      "commandPalette": [
+        {
+          "command": "get-unique-values.csv.hideSelectedColumn",
+          "when": "false"
+        },
+        {
+          "command": "get-unique-values.csv.showAllColumns",
+          "when": "false"
+        },
+        {
+          "command": "get-unique-values.openCsvViewer",
+          "when": "resourceExtname =~ /^\\.(csv|tsv|psv)$/"
+        }
       ]
+    },
+    "customEditors": [
+      {
+        "viewType": "getUniqueValues.csvViewer",
+        "displayName": "CSV Viewer",
+        "priority": "option",
+        "selector": [
+          {
+            "filenamePattern": "*.csv"
+          },
+          {
+            "filenamePattern": "*.tsv"
+          },
+          {
+            "filenamePattern": "*.psv"
+          }
+        ]
+      }
+    ],
+    "configuration": {
+      "title": "CSV Viewer",
+      "properties": {
+        "getUniqueValues.csv.defaultPageSize": {
+          "type": "number",
+          "enum": [
+            50,
+            100,
+            250,
+            500,
+            1000
+          ],
+          "default": 100,
+          "description": "Rows per page in the CSV Viewer."
+        },
+        "getUniqueValues.csv.columnColors": {
+          "type": "string",
+          "enum": [
+            "header",
+            "headerAndCells",
+            "off"
+          ],
+          "default": "headerAndCells",
+          "description": "Give every column its own colour: header only, header plus a tinted cell edge, or off."
+        },
+        "getUniqueValues.csv.longText": {
+          "type": "string",
+          "enum": [
+            "truncate",
+            "wrap",
+            "full"
+          ],
+          "default": "truncate",
+          "description": "How long cell values are shown: one truncated line, up to 3 wrapped lines, or in full."
+        },
+        "getUniqueValues.csv.defaultColumnWidth": {
+          "type": "number",
+          "default": 300,
+          "minimum": 80,
+          "description": "Default column width in pixels.",
+          "maximum": 2000
+        }
+      }
     }
   },
   "scripts": {
-    "vscode:prepublish": "npm run compile",
-    "compile": "tsc -p ./",
-    "watch": "tsc -watch -p ./",
-    "pretest": "npm run compile && npm run lint",
+    "vscode:prepublish": "npm run typecheck && node esbuild.mjs --production",
+    "build": "node esbuild.mjs",
+    "compile": "npm run typecheck && node esbuild.mjs",
+    "watch": "node esbuild.mjs --watch",
+    "typecheck": "tsc -p ./ --noEmit && tsc -p src/viewer --noEmit",
     "lint": "eslint src",
-    "test": "vscode-test"
+    "test:unit": "node -e \"require('fs').rmSync('out-test',{recursive:true,force:true})\" && node esbuild.mjs && tsc -p tsconfig.test.json && mocha --ui tdd \"out-test/test/unit/**/*.test.js\"",
+    "test:integration": "node -e \"require('fs').rmSync('out-test',{recursive:true,force:true})\" && node esbuild.mjs && tsc -p tsconfig.test.json && vscode-test",
+    "pretest": "npm run typecheck && npm run lint",
+    "test": "npm run test:unit && npm run test:integration",
+    "perf": "tsc -p tsconfig.test.json && node --expose-gc scripts/perf.mjs"
   },
   "devDependencies": {
     "@types/mocha": "^10.0.10",
@@ -62,7 +182,9 @@
     "@typescript-eslint/parser": "^8.31.1",
     "@vscode/test-cli": "^0.0.10",
     "@vscode/test-electron": "^2.5.2",
+    "esbuild": "^0.28.2",
     "eslint": "^9.25.1",
+    "mocha": "^12.0.3",
     "typescript": "^5.8.3"
   },
   "repository": {

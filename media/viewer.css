@@ -1,0 +1,132 @@
+html, body { height: 100%; margin: 0; padding: 0; }
+body {
+    font-family: var(--vscode-font-family);
+    font-size: var(--vscode-font-size);
+    color: var(--vscode-foreground);
+    background: var(--vscode-editor-background);
+    overflow: hidden;
+}
+#app { display: flex; flex-direction: column; height: 100vh; }
+
+/* controls */
+button, select, input {
+    font: inherit;
+    color: var(--vscode-input-foreground);
+    background: var(--vscode-input-background);
+    border: 1px solid var(--vscode-input-border, transparent);
+    border-radius: 2px;
+    padding: 2px 6px;
+}
+button {
+    cursor: pointer;
+    color: var(--vscode-button-secondaryForeground);
+    background: var(--vscode-button-secondaryBackground);
+    border-color: transparent;
+}
+button:hover:not(:disabled) { background: var(--vscode-button-secondaryHoverBackground); }
+button:disabled { opacity: 0.5; cursor: default; }
+button.primary { color: var(--vscode-button-foreground); background: var(--vscode-button-background); }
+button.toggle[aria-pressed="true"] {
+    color: var(--vscode-inputOption-activeForeground);
+    background: var(--vscode-inputOption-activeBackground);
+    outline: 1px solid var(--vscode-inputOption-activeBorder);
+}
+button.link { background: none; border: 0; color: var(--vscode-textLink-foreground); padding: 0; }
+button.chip { border-radius: 10px; padding: 1px 10px; }
+input.search { width: 260px; }
+input.page-input { width: 56px; text-align: right; }
+.spacer { flex: 1; }
+.err { color: var(--vscode-errorForeground); }
+.muted { color: var(--vscode-descriptionForeground); }
+
+/* toolbar, banner, status */
+.toolbar { display: flex; flex-direction: column; gap: 6px; padding: 8px; border-bottom: 1px solid var(--vscode-panel-border); }
+.toolbar .row { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; }
+.chips { display: inline-flex; flex-wrap: wrap; gap: 4px; }
+.banner { display: flex; align-items: center; gap: 8px; padding: 6px 10px; color: var(--vscode-foreground);
+    background: var(--vscode-inputValidation-infoBackground); border-bottom: 1px solid var(--vscode-inputValidation-infoBorder); }
+.banner.error { background: var(--vscode-inputValidation-errorBackground); border-color: var(--vscode-inputValidation-errorBorder); }
+.banner[hidden], .side[hidden] { display: none; }
+.status { position: relative; display: flex; align-items: center; gap: 12px; padding: 4px 10px;
+    border-top: 1px solid var(--vscode-panel-border); color: var(--vscode-descriptionForeground); }
+.progress { position: absolute; left: 0; top: 0; height: 2px; width: 0; background: var(--vscode-progressBar-background); transition: width 0.2s; }
+
+/* main area */
+.main { flex: 1; display: flex; min-height: 0; }
+.table-wrap { flex: 1; overflow: auto; min-width: 0; outline: none; }
+.message { padding: 24px; text-align: center; color: var(--vscode-descriptionForeground); }
+
+/* table */
+table.csv { border-collapse: separate; border-spacing: 0; table-layout: fixed; }
+table.csv th, table.csv td {
+    box-sizing: border-box; padding: 2px 8px; overflow: hidden; vertical-align: top;
+    border-right: 1px solid var(--vscode-panel-border); border-bottom: 1px solid var(--vscode-panel-border);
+}
+table.csv th {
+    position: sticky; top: 0; z-index: 2; text-align: left; font-weight: 600; white-space: nowrap;
+    padding-right: 24px; color: var(--col-fg, inherit);
+    /* Opaque even when --col-bg is translucent or transparent (high contrast): sticky cells must hide what scrolls under them. */
+    background: linear-gradient(var(--col-bg, transparent), var(--col-bg, transparent)), var(--vscode-editor-background);
+}
+table.csv th .name { display: block; overflow: hidden; text-overflow: ellipsis; }
+table.csv th .filtered { color: var(--vscode-charts-orange); margin-left: 4px; }
+table.csv th .menu-btn { position: absolute; right: 8px; top: 50%; transform: translateY(-50%); padding: 0 4px; background: none; border: 0; color: inherit; opacity: 0.6; }
+table.csv th .menu-btn:hover { opacity: 1; }
+table.csv th .resize { position: absolute; right: 0; top: 0; bottom: 0; width: 6px; cursor: col-resize; }
+table.csv th.rownum, table.csv td.rownum { position: sticky; left: 0; text-align: right; color: var(--vscode-descriptionForeground); background: var(--vscode-editor-background); }
+table.csv th.rownum { z-index: 4; }
+table.csv td.rownum { z-index: 1; }
+table.csv th.pinned { z-index: 3; }
+table.csv td.pinned { position: sticky; z-index: 1; }
+table.csv td.cell .v { overflow: hidden; }
+table.csv.longtext-truncate td.cell .v { white-space: nowrap; text-overflow: ellipsis; }
+table.csv.longtext-wrap td.cell .v { display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; white-space: pre-wrap; word-break: break-word; }
+table.csv.longtext-full td.cell .v { white-space: pre-wrap; word-break: break-word; }
+table.csv td.cell.tinted { background: var(--col-tint); box-shadow: inset 3px 0 0 var(--col-edge); }
+table.csv td.cell.pinned { background: linear-gradient(var(--col-tint, transparent), var(--col-tint, transparent)), var(--vscode-editor-background); }
+table.csv td.cell.selected { outline: 2px solid var(--vscode-focusBorder); outline-offset: -2px; }
+body.hc table.csv th.colhead { border-bottom: 3px solid var(--col-edge); }
+
+/* context menu */
+.menu { position: fixed; z-index: 100; min-width: 190px; padding: 4px 0;
+    color: var(--vscode-menu-foreground); background: var(--vscode-menu-background);
+    border: 1px solid var(--vscode-menu-border, var(--vscode-panel-border)); box-shadow: 0 2px 8px var(--vscode-widget-shadow); }
+.menu-item { display: block; width: 100%; text-align: left; padding: 4px 12px; color: inherit; background: none; border: 0; border-radius: 0; }
+.menu-item:hover:not(:disabled) { color: var(--vscode-menu-selectionForeground); background: var(--vscode-menu-selectionBackground); }
+
+/* side panel */
+.side { width: 360px; flex: none; display: flex; flex-direction: column; border-left: 1px solid var(--vscode-panel-border); }
+.side-head { display: flex; align-items: center; gap: 8px; padding: 8px; border-bottom: 1px solid var(--vscode-panel-border); }
+.side-title { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.side-body { flex: 1; overflow: auto; padding: 8px; display: flex; flex-direction: column; gap: 8px; min-height: 0; }
+.side-tools { display: flex; flex-wrap: wrap; gap: 6px; }
+.side-tools input { flex: 1; min-width: 120px; }
+.tabs { display: flex; gap: 4px; }
+.u-summary { color: var(--vscode-descriptionForeground); }
+.u-list { display: flex; flex-direction: column; }
+.u-row { display: grid; grid-template-columns: auto 1fr auto; align-items: center; gap: 8px; padding: 2px 0; cursor: pointer; }
+.u-label { position: relative; overflow: hidden; padding: 1px 4px; }
+.u-bar { position: absolute; left: 0; top: 0; bottom: 0; background: var(--vscode-charts-blue); opacity: 0.18; }
+.u-val, .u-empty { position: relative; white-space: nowrap; }
+.u-empty { font-style: italic; }
+.u-count { color: var(--vscode-descriptionForeground); white-space: nowrap; }
+pre.detail-value { margin: 0; white-space: pre-wrap; word-break: break-word; font-family: var(--vscode-editor-font-family); }
+.rec-row { border-left: 3px solid var(--col-edge, transparent); padding: 2px 8px; cursor: pointer; }
+.rec-row.dim { opacity: 0.55; }
+.rec-name { font-weight: 600; }
+.rec-val { white-space: pre-wrap; word-break: break-word; max-height: 8em; overflow: auto; }
+
+/* column picker */
+.picker { position: fixed; z-index: 90; width: 340px; max-height: 80vh; display: flex; flex-direction: column; gap: 6px; padding: 8px;
+    color: var(--vscode-foreground); background: var(--vscode-editorWidget-background);
+    border: 1px solid var(--vscode-editorWidget-border, var(--vscode-panel-border)); box-shadow: 0 2px 8px var(--vscode-widget-shadow); }
+.picker .row { display: flex; flex-wrap: wrap; align-items: center; gap: 4px; }
+.picker .row input[type="text"], .picker .row input[type="search"] { flex: 1; min-width: 100px; }
+.picker-list { overflow: auto; max-height: 280px; border: 1px solid var(--vscode-panel-border); }
+.picker-item { display: flex; align-items: center; gap: 6px; padding: 2px 6px; }
+.picker-item.dragging { opacity: 0.4; }
+.picker-item.drop-target { box-shadow: inset 0 2px 0 var(--vscode-focusBorder); }
+.picker-item .handle { cursor: grab; color: var(--vscode-descriptionForeground); }
+.picker-item .dot { width: 10px; height: 10px; border-radius: 50%; flex: none; }
+.picker-item .pname { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.picker-item.hidden-col .pname { opacity: 0.55; }

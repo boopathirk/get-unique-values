@@ -4,8 +4,9 @@ import { Predicate, compilePredicates } from './predicates';
 import { parseRow } from './rowParser';
 import { RowIndexer } from './rowIndexer';
 import { ResultSet, coalesce } from './resultSet';
+import { StatsAccumulator } from './columnStats';
 import type {
-    CancelToken, Encoding, FileInfo, FilterProgress, FilterResult, IndexProgress,
+    CancelToken, ColumnStats, DuplicateGroup, DuplicateResult, Encoding, FileInfo, FilterProgress, FilterResult, IndexProgress,
     OpenResult, PageResult, ParseOptions, UniqueResult,
 } from '../types';
 
@@ -19,6 +20,8 @@ export interface Tuning {
 
 export const DEFAULT_TUNING: Tuning = { chunkBytes: 1 << 20, scanBytes: 4 << 20, maxQuoteBytes: 1 << 20 };
 export const UNIQUE_CAP = 100_000;
+export const DUPLICATE_KEY_CAP = 3_000_000;
+export const DUPLICATE_GROUP_CAP = 10_000;
 
 const QUOTE = 0x22;
 const SAMPLE_BYTES = 64 * 1024;
@@ -43,6 +46,7 @@ export class CsvEngine {
     private view: ResultSet | null = null;
     private viewComplete = true;
     private readonly uniqueCache = new Map<number, UniqueResult>();
+    private readonly statsCache = new Map<number, ColumnStats>();
     private nonEmptyCache: number[] | undefined;
     private indexError: Error | undefined;
     private readonly indexFinished: Promise<void>;
@@ -332,6 +336,89 @@ export class CsvEngine {
         }
         this.nonEmptyCache = seen.flatMap((s, c) => (s ? [c] : []));
         return this.nonEmptyCache;
+    }
+
+    async columnStats(
+        column: number,
+        token: CancelToken,
+        onProgress?: (scanned: number, total: number) => void,
+    ): Promise<ColumnStats | null> {
+        await this.indexFinished;
+        this.throwIfIndexFailed();
+        const cached = this.statsCache.get(column);
+        if (cached) {
+            return cached;
+        }
+        const total = this.dataRowCount;
+        const acc = new StatsAccumulator(column);
+        const outcome = await this.scan(
+            [[0, total]],
+            token,
+            (_rowNum, fields) => {
+                acc.add(fields[column] ?? '');
+            },
+            (scanned) => onProgress?.(scanned, total),
+        );
+        if (outcome === 'cancelled') {
+            return null;
+        }
+        const result = acc.result();
+        this.statsCache.set(column, result);
+        return result;
+    }
+
+    /** Keys (one or more columns) that occur more than once, with counts and the row of the first occurrence. */
+    async duplicateKeys(
+        columns: number[],
+        token: CancelToken,
+        onProgress?: (scanned: number, total: number) => void,
+    ): Promise<DuplicateResult | null> {
+        if (columns.length === 0) {
+            throw new Error('Choose at least one key column.');
+        }
+        await this.indexFinished;
+        this.throwIfIndexFailed();
+        const total = this.dataRowCount;
+        const seen = new Map<string, { n: number; first: number }>();
+        let capped = false;
+        const outcome = await this.scan(
+            [[0, total]],
+            token,
+            (rowNum, fields) => {
+                const key = columns.map((c) => fields[c] ?? '').join('\u0001');
+                const entry = seen.get(key);
+                if (entry) {
+                    entry.n++;
+                } else if (seen.size < DUPLICATE_KEY_CAP) {
+                    seen.set(key, { n: 1, first: rowNum });
+                } else {
+                    capped = true;
+                }
+            },
+            (scanned) => onProgress?.(scanned, total),
+        );
+        if (outcome === 'cancelled') {
+            return null;
+        }
+        const groups: DuplicateGroup[] = [];
+        let duplicateRows = 0;
+        let duplicateKeys = 0;
+        for (const [key, { n, first }] of seen) {
+            if (n > 1) {
+                duplicateKeys++;
+                duplicateRows += n;
+                groups.push({ key: key.split('\u0001'), count: n, firstRow: first });
+            }
+        }
+        groups.sort((a, b) => b.count - a.count || a.firstRow - b.firstRow);
+        return {
+            columns,
+            groups: groups.slice(0, DUPLICATE_GROUP_CAP),
+            duplicateKeys,
+            duplicateRows,
+            truncated: groups.length > DUPLICATE_GROUP_CAP,
+            capped,
+        };
     }
 
     async dispose(): Promise<void> {

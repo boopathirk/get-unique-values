@@ -95,3 +95,23 @@ export interface ColumnStats {
     avgLen: number;
     samples: string[];
 }
+
+export interface DuplicateGroup {
+    /** One value per key column, in the order requested. */
+    key: string[];
+    count: number;
+    /** 0-based data row number of the first occurrence. */
+    firstRow: number;
+}
+
+export interface DuplicateResult {
+    columns: number[];
+    groups: DuplicateGroup[];
+    /** Keys that occur more than once (before truncation). */
+    duplicateKeys: number;
+    /** Rows that belong to a duplicated key (before truncation). */
+    duplicateRows: number;
+    truncated: boolean;
+    /** True when more than DUPLICATE_KEY_CAP distinct keys were seen: counts for later keys are unknown. */
+    capped: boolean;
+}

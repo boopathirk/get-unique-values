@@ -1,5 +1,5 @@
 import * as assert from 'assert';
-import { PAGE_SIZES, defaultLayout, headerHash, matchColumns, moveItem, sanitizeLayout, visibleColumns } from '../../csv/core/layout';
+import { PAGE_SIZES, defaultLayout, freezeColumn, headerHash, matchColumns, moveItem, moveToFirst, sanitizeLayout, visibleColumns } from '../../csv/core/layout';
 
 const D = { pageSize: 100, longText: 'truncate', colorMode: 'headerAndCells' } as const;
 
@@ -63,5 +63,43 @@ suite('layout', () => {
         assert.deepStrictEqual(matchColumns(header, '^price_'), [3]);
         assert.deepStrictEqual(matchColumns(header, 'price'), [2, 3]);
         assert.deepStrictEqual(matchColumns(header, '('), [2]);
+    });
+    test('moveToFirst puts the column first and keeps the others in order', () => {
+        const l = defaultLayout(5, { pageSize: 100, longText: 'truncate', colorMode: 'off' });
+        moveToFirst(l, 3);
+        assert.deepStrictEqual(l.order, [3, 0, 1, 2, 4]);
+    });
+    test('moveToFirst on the first column changes nothing', () => {
+        const l = defaultLayout(3, { pageSize: 100, longText: 'truncate', colorMode: 'off' });
+        moveToFirst(l, 0);
+        assert.deepStrictEqual(l.order, [0, 1, 2]);
+    });
+    test('freezeColumn moves to front and pins one column', () => {
+        const l = defaultLayout(5, { pageSize: 100, longText: 'truncate', colorMode: 'off' });
+        freezeColumn(l, 2);
+        assert.deepStrictEqual(l.order, [2, 0, 1, 3, 4]);
+        assert.strictEqual(l.pinned, 1);
+    });
+    test('freezeColumn adds to existing pinned columns', () => {
+        const l = defaultLayout(5, { pageSize: 100, longText: 'truncate', colorMode: 'off' });
+        l.pinned = 2;
+        freezeColumn(l, 4);
+        assert.deepStrictEqual(l.order, [4, 0, 1, 2, 3]);
+        assert.strictEqual(l.pinned, 3);
+    });
+    test('freezeColumn on an already pinned column only reorders', () => {
+        const l = defaultLayout(5, { pageSize: 100, longText: 'truncate', colorMode: 'off' });
+        l.pinned = 3;
+        freezeColumn(l, 2);
+        assert.deepStrictEqual(l.order, [2, 0, 1, 3, 4]);
+        assert.strictEqual(l.pinned, 3);
+    });
+    test('freezeColumn counts only visible columns when deciding if a column is pinned', () => {
+        const l = defaultLayout(5, { pageSize: 100, longText: 'truncate', colorMode: 'off' });
+        l.hidden = [0];
+        l.pinned = 1; // pinned area = visible column 1
+        freezeColumn(l, 3);
+        assert.deepStrictEqual(l.order, [3, 0, 1, 2, 4]);
+        assert.strictEqual(l.pinned, 2);
     });
 });

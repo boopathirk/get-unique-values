@@ -1,4 +1,4 @@
-import { defaultLayout, matchColumns, moveItem, visibleColumns } from '../csv/core/layout';
+import { defaultLayout, freezeColumn, matchColumns, moveItem, moveToFirst, visibleColumns } from '../csv/core/layout';
 import type { ColorMode, Layout, LongText } from '../csv/core/layout';
 import { emit, loadPage, saveLayout } from './actions';
 import { post, showInfo, state } from './state';
@@ -102,6 +102,14 @@ export function moveColumn(from: number, to: number): void {
     mutate((l) => {
         l.order = moveItem(l.order, from, to);
     });
+}
+
+export function moveColumnToFirst(column: number): void {
+    mutate((l) => moveToFirst(l, column));
+}
+
+export function freezeColumnOp(column: number): void {
+    mutate((l) => freezeColumn(l, column));
 }
 
 function notify(message: string): void {

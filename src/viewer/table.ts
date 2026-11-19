@@ -5,7 +5,7 @@ import { visibleColumns } from '../csv/core/layout';
 import { rowToCsv, rowToJson, truncateText } from '../csv/core/textUtil';
 import { applyFilters, clearColumnFilter, emit, on, saveLayout } from './actions';
 import { MenuItem, h, showMenu } from './dom';
-import { hideColumn, setPinned } from './layoutOps';
+import { freezeColumnOp, hideColumn, moveColumnToFirst, setPinned } from './layoutOps';
 import { post, state } from './state';
 
 const ROWNUM_WIDTH = 72;
@@ -104,6 +104,8 @@ function headerMenu(column: number): MenuItem[] {
             },
         },
         { label: 'Hide column', run: () => hideColumn(column) },
+        { label: 'Move to first column', run: () => moveColumnToFirst(column) },
+        { label: 'Freeze column (move to first and pin)', run: () => freezeColumnOp(column) },
         { label: 'Pin columns up to here', run: () => setPinned(position + 1) },
     ];
     if (layout.pinned > 0) {

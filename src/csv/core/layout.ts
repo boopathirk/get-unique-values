@@ -129,3 +129,21 @@ export function matchColumns(header: string[], pattern: string): number[] {
     }
     return header.flatMap((name, i) => (test(name) ? [i] : []));
 }
+
+/** Put `column` first in the column order. */
+export function moveToFirst(l: Layout, column: number): void {
+    const i = l.order.indexOf(column);
+    if (i > 0) {
+        l.order = moveItem(l.order, i, 0);
+    }
+}
+
+/** Move `column` to the front and keep it (and any columns already pinned) frozen while scrolling sideways. */
+export function freezeColumn(l: Layout, column: number): void {
+    const visible = visibleColumns(l);
+    const alreadyPinned = visible.indexOf(column) !== -1 && visible.indexOf(column) < l.pinned;
+    moveToFirst(l, column);
+    if (!alreadyPinned) {
+        l.pinned = Math.min(l.pinned + 1, visibleColumns(l).length);
+    }
+}

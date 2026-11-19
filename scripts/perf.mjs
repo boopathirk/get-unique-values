@@ -61,6 +61,10 @@ const sizeMb = fs.statSync(file).size / 1024 / 1024;
 const noop = () => undefined;
 const token = { cancelled: false };
 
+if (typeof globalThis.gc !== 'function') {
+    console.error('run via `npm run perf` so --expose-gc is set; memory figures will include garbage');
+}
+
 // Retained memory after a forced GC (RSS also counts garbage that has not been collected yet).
 const retainedMb = () => {
     globalThis.gc?.();

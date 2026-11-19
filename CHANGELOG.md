@@ -19,4 +19,3 @@ All notable changes to the "get-unique-values" extension are documented in this 
 ## [0.0.1]
 
 - Initial release: remove duplicate and empty lines from a file or selection.
-```

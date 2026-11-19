@@ -31,19 +31,21 @@ suite('Extension integration', function () {
         const file = path.join(dir, 'sample.csv');
         fs.writeFileSync(file, 'sku,name\nA1,Blue\nA2,Red\nA3,Blue\n');
 
-        const ext = vscode.extensions.getExtension<CsvViewerApi>('boopathi08.get-unique-values');
-        assert.ok(ext, 'extension not found');
-        const api = await ext.activate();
+        try {
+            const ext = vscode.extensions.getExtension<CsvViewerApi>('boopathi08.get-unique-values');
+            assert.ok(ext, 'extension not found');
+            const api = await ext.activate();
 
-        const uri = vscode.Uri.file(file);
-        await vscode.commands.executeCommand('vscode.openWith', uri, 'getUniqueValues.csvViewer');
-        await waitFor(() => api.sessions.get(uri.toString())?.lastPage !== undefined);
+            const uri = vscode.Uri.file(file);
+            await vscode.commands.executeCommand('vscode.openWith', uri, 'getUniqueValues.csvViewer');
+            await waitFor(() => api.sessions.get(uri.toString())?.lastPage !== undefined);
 
-        const page = api.sessions.get(uri.toString())?.lastPage;
-        assert.deepStrictEqual(page?.rows, [['A1', 'Blue'], ['A2', 'Red'], ['A3', 'Blue']]);
-        assert.deepStrictEqual(page?.rowNumbers, [0, 1, 2]);
-        assert.strictEqual(page?.total, 3);
-
-        fs.rmSync(dir, { recursive: true, force: true });
+            const page = api.sessions.get(uri.toString())?.lastPage;
+            assert.deepStrictEqual(page?.rows, [['A1', 'Blue'], ['A2', 'Red'], ['A3', 'Blue']]);
+            assert.deepStrictEqual(page?.rowNumbers, [0, 1, 2]);
+            assert.strictEqual(page?.total, 3);
+        } finally {
+            fs.rmSync(dir, { recursive: true, force: true });
+        }
     });
 });

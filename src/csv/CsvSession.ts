@@ -7,7 +7,7 @@ import type { ColorMode, LongText } from './core/layout';
 import type { Predicate } from './core/predicates';
 import type { HostToView, ViewCommand, ViewToHost, ViewerSettings } from './protocol';
 import type {
-    FileInfo, FilterProgress, FilterResult, IndexProgress, OpenResult, PageResult, ParseOptions, UniqueResult,
+    ColumnStats, DuplicateResult, FileInfo, FilterProgress, FilterResult, IndexProgress, OpenResult, PageResult, ParseOptions, UniqueResult,
 } from './types';
 
 function errorMessage(err: unknown): string {
@@ -46,6 +46,7 @@ export class CsvSession implements vscode.Disposable {
     /** webview job id -> worker request id (the webview counts filter and unique jobs separately). */
     private readonly filterJobs = new Map<number, number>();
     private readonly uniqueJobs = new Map<number, number>();
+    private readonly analysisJobs = new Map<number, number>();
     private disposed = false;
     private activeFilter: number | undefined;
     private parseOptions: ParseOptions;
@@ -140,8 +141,16 @@ export class CsvSession implements vscode.Disposable {
             case 'unique':
                 this.startUnique(m.jobId, m.column);
                 break;
+            case 'stats':
+                this.startAnalysis(m.jobId, { type: 'stats', column: m.column }, (result, error) =>
+                    this.post({ type: 'stats', jobId: m.jobId, result: result as ColumnStats | null, error }));
+                break;
+            case 'duplicates':
+                this.startAnalysis(m.jobId, { type: 'duplicates', columns: m.columns }, (result, error) =>
+                    this.post({ type: 'duplicates', jobId: m.jobId, result: result as DuplicateResult | null, error }));
+                break;
             case 'cancel': {
-                const id = (m.kind === 'unique' ? this.uniqueJobs : this.filterJobs).get(m.jobId);
+                const id = (m.kind === 'unique' ? this.uniqueJobs : m.kind === 'analysis' ? this.analysisJobs : this.filterJobs).get(m.jobId);
                 if (id !== undefined) {
                     this.worker.cancel(id);
                 }
@@ -176,6 +185,7 @@ export class CsvSession implements vscode.Disposable {
         const gen = ++this.openGen;
         this.filterJobs.clear();
         this.uniqueJobs.clear();
+        this.analysisJobs.clear();
         this.activeFilter = undefined;
         try {
             const { promise } = this.worker.request<OpenResult>(
@@ -241,6 +251,25 @@ export class CsvSession implements vscode.Disposable {
             .finally(() => {
                 if (this.filterJobs.get(jobId) === id) {
                     this.filterJobs.delete(jobId);
+                }
+            });
+    }
+
+    private startAnalysis(
+        jobId: number,
+        body: { type: 'stats'; column: number } | { type: 'duplicates'; columns: number[] },
+        reply: (result: unknown, error?: string) => void,
+    ): void {
+        const { id, promise } = this.worker.request<unknown>(body);
+        this.analysisJobs.set(jobId, id);
+        promise
+            .then(
+                (result) => reply(result),
+                (err) => reply(null, errorMessage(err)),
+            )
+            .finally(() => {
+                if (this.analysisJobs.get(jobId) === id) {
+                    this.analysisJobs.delete(jobId);
                 }
             });
     }

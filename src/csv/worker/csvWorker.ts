@@ -106,6 +106,24 @@ async function handle(req: WorkerRequest): Promise<void> {
                 }
                 return;
             }
+            case 'stats': {
+                const token = tokenFor(req.id);
+                try {
+                    send({ type: 'result', id: req.id, data: await getEngine().columnStats(req.column, token) });
+                } finally {
+                    tokens.delete(req.id);
+                }
+                return;
+            }
+            case 'duplicates': {
+                const token = tokenFor(req.id);
+                try {
+                    send({ type: 'result', id: req.id, data: await getEngine().duplicateKeys(req.columns, token) });
+                } finally {
+                    tokens.delete(req.id);
+                }
+                return;
+            }
             case 'nonEmptyColumns': {
                 const token = tokenFor(req.id);
                 try {

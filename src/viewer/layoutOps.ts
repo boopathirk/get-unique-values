@@ -1,7 +1,7 @@
-import { defaultLayout, visibleColumns } from '../csv/core/layout';
+import { defaultLayout, matchColumns, moveItem, visibleColumns } from '../csv/core/layout';
 import type { ColorMode, Layout, LongText } from '../csv/core/layout';
 import { loadPage, saveLayout } from './actions';
-import { state } from './state';
+import { post, state } from './state';
 
 export function mutate(fn: (layout: Layout) => void): void {
     if (state.layout) {
@@ -63,4 +63,107 @@ export function resetLayout(): void {
     };
     saveLayout();
     loadPage(0);
+}
+
+export function toggleColumn(column: number): void {
+    mutate((l) => {
+        const i = l.hidden.indexOf(column);
+        if (i >= 0) {
+            l.hidden.splice(i, 1);
+        } else {
+            l.hidden.push(column);
+        }
+        clampPinned(l);
+    });
+}
+
+export function showAll(): void {
+    mutate((l) => {
+        l.hidden = [];
+    });
+}
+
+export function hideAll(): void {
+    mutate((l) => {
+        l.hidden = l.order.slice();
+        l.pinned = 0;
+    });
+}
+
+export function invertHidden(): void {
+    mutate((l) => {
+        const hidden = new Set(l.hidden);
+        l.hidden = l.order.filter((c) => !hidden.has(c));
+        clampPinned(l);
+    });
+}
+
+export function moveColumn(from: number, to: number): void {
+    mutate((l) => {
+        l.order = moveItem(l.order, from, to);
+    });
+}
+
+function showOnly(keep: Set<number>): void {
+    mutate((l) => {
+        l.hidden = l.order.filter((c) => !keep.has(c));
+        clampPinned(l);
+    });
+}
+
+/** Show only columns whose name matches the pattern (regex, case-insensitive). */
+export function showOnlyMatching(pattern: string): void {
+    const info = state.info;
+    if (info && pattern.trim() !== '') {
+        showOnly(new Set(matchColumns(info.header, pattern)));
+    }
+}
+
+/** Show only columns that have a column filter or are the search column. */
+export function showOnlyFiltered(): void {
+    const keep = new Set<number>(Object.keys(state.columnFilters).map(Number));
+    if (state.search.column !== null) {
+        keep.add(state.search.column);
+    }
+    if (keep.size > 0) {
+        showOnly(keep);
+    }
+}
+
+/** Ask the worker which columns contain data; the reply is handled by `applyNonEmpty`. */
+export function requestHideEmpty(): void {
+    post({ type: 'nonEmpty' });
+}
+
+export function applyNonEmpty(columns: number[] | null): void {
+    if (columns) {
+        showOnly(new Set(columns));
+    }
+}
+
+export function saveSet(name: string): void {
+    const trimmed = name.trim();
+    if (trimmed === '') {
+        return;
+    }
+    mutate((l) => {
+        l.sets[trimmed] = { hidden: l.hidden.slice(), order: l.order.slice() };
+    });
+}
+
+export function applySet(name: string): void {
+    mutate((l) => {
+        const set = l.sets[name];
+        if (set) {
+            l.hidden = set.hidden.slice();
+            l.order = set.order.slice();
+            clampPinned(l);
+        }
+    });
+}
+
+export function deleteSet(name: string): void {
+    mutate((l) => {
+        delete l.sets[name];
+    });
 }

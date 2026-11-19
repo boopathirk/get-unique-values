@@ -136,3 +136,8 @@ pre.detail-value { margin: 0; white-space: pre-wrap; word-break: break-word; fon
 .stats-sample { padding: 2px 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-family: var(--vscode-editor-font-family); }
 .dup-row { display: flex; justify-content: space-between; gap: 8px; width: 100%; text-align: left; background: none; border: 0; border-bottom: 1px solid var(--vscode-panel-border); padding: 4px 2px; color: inherit; cursor: pointer; }
 .dup-row:hover { background: var(--vscode-list-hoverBackground); }
+
+.dup-modes { display: flex; gap: 4px; padding: 6px 0; }
+.dup-modes button.active { background: var(--vscode-button-background); color: var(--vscode-button-foreground); }
+.col-check { max-height: 220px; overflow: auto; border: 1px solid var(--vscode-panel-border); padding: 4px; }
+.col-check label { display: flex; gap: 6px; padding: 1px 0; }

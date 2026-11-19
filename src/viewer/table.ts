@@ -91,7 +91,8 @@ function headerMenu(column: number): MenuItem[] {
     const items: MenuItem[] = [
         { label: 'Unique values', run: () => emit('openUnique', column) },
         { label: 'Column stats', run: () => emit('openStats', column) },
-        { label: 'Find duplicates', run: () => emit('openDuplicates', column) },
+        { label: 'Find duplicates', run: () => emit('openDuplicates', { mode: 'rows', columns: [column] }) },
+        { label: 'Find duplicate columns', run: () => emit('openDuplicates', { mode: 'columns' }) },
         {
             label: 'Search in this column',
             run: () => {

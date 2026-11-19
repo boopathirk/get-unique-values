@@ -151,6 +151,14 @@ window.addEventListener('message', (event: MessageEvent<HostToView>) => {
                 emit('panel');
             }
             break;
+        case 'duplicateColumns':
+            if (m.jobId === state.analysisJob) {
+                state.duplicateColumns = m.result;
+                state.analysisLoading = false;
+                state.analysisError = m.error ?? '';
+                emit('panel');
+            }
+            break;
         case 'nonEmpty':
             if (m.jobId === state.nonEmptyJob) {
                 applyNonEmpty(m.columns);

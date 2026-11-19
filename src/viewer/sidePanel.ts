@@ -21,7 +21,7 @@ export function mountSidePanel(root: HTMLElement): void {
                 renderStats(root, panel.column);
                 break;
             case 'duplicates':
-                renderDuplicates(root, panel.column);
+                renderDuplicates(root);
                 break;
             case 'detail':
                 renderDetail(root, panel.rowNumber, panel.col);
@@ -35,7 +35,7 @@ export function mountSidePanel(root: HTMLElement): void {
     on('render', render);
     on<number>('openUnique', openUnique);
     on<number>('openStats', openStats);
-    on<number>('openDuplicates', openDuplicates);
+    on<{ mode: 'rows' | 'columns'; columns?: number[] }>('openDuplicates', openDuplicates);
     on<{ row: number; col: number }>('openDetail', ({ row, col }) => {
         state.panel = { kind: 'detail', rowNumber: state.rowNumbers[row] ?? row, col };
         emit('panel');

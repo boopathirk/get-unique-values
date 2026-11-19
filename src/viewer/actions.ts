@@ -79,6 +79,7 @@ export function clearAllFilters(): void {
     state.search.query = '';
     state.columnFilters = {};
     state.badRowsOnly = false;
+    state.keyFilter = null;
     applyFilters();
     emit('table');
     emit('panel');

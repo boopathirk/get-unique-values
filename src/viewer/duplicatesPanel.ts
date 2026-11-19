@@ -1,63 +1,212 @@
+import { visibleColumns } from '../csv/core/layout';
 import { applyFilters, emit } from './actions';
 import { fmt, h } from './dom';
+import { hideColumn } from './layoutOps';
 import { panelHeader } from './panelCommon';
 import { post, state } from './state';
 
 const MAX_ROWS = 500;
 
-export function openDuplicates(column: number): void {
-    state.panel = { kind: 'duplicates', column };
+const name = (c: number): string => state.info?.header[c] ?? `Column ${c + 1}`;
+
+function reset(mode: 'rows' | 'columns', selected: number[]): void {
+    state.panel = { kind: 'duplicates' };
+    state.dup.mode = mode;
+    state.dup.selected = selected;
+    state.duplicates = null;
+    state.duplicateColumns = null;
+    state.analysisLoading = false;
+    state.analysisError = '';
+}
+
+function scanRows(): void {
     state.duplicates = null;
     state.analysisLoading = true;
     state.analysisError = '';
     state.analysisJob++;
-    post({ type: 'duplicates', jobId: state.analysisJob, columns: [column] });
+    post({ type: 'duplicates', jobId: state.analysisJob, columns: [...state.dup.selected] });
     emit('panel');
 }
 
-export function renderDuplicates(root: HTMLElement, column: number): void {
-    const name = state.info?.header[column] ?? `Column ${column + 1}`;
-    root.append(panelHeader(`Duplicates: ${name}`));
+function scanColumns(): void {
+    state.analysisLoading = true;
+    state.analysisJob++;
+    post({ type: 'duplicateColumns', jobId: state.analysisJob });
+}
+
+export function openDuplicates(arg: { mode: 'rows' | 'columns'; columns?: number[] }): void {
+    reset(arg.mode, arg.columns ?? []);
+    if (arg.mode === 'columns') {
+        scanColumns();
+    } else if (state.dup.selected.length > 0) {
+        scanRows();
+        return;
+    }
+    emit('panel');
+}
+
+function switchMode(mode: 'rows' | 'columns'): void {
+    reset(mode, state.dup.selected);
+    if (mode === 'columns') {
+        scanColumns();
+    }
+    emit('panel');
+}
+
+function scanning(body: HTMLElement): void {
+    const cancel = h('button', {}, 'Cancel');
+    cancel.addEventListener('click', () => post({ type: 'cancel', kind: 'analysis', jobId: state.analysisJob }));
+    body.append(h('div', { class: 'message' }, 'Looking for duplicates…'), cancel);
+}
+
+export function renderDuplicates(root: HTMLElement): void {
+    root.append(panelHeader('Duplicates'));
+    const modes = h('div', { class: 'dup-modes' });
+    for (const [mode, label] of [['rows', 'Rows'], ['columns', 'Columns']] as const) {
+        const btn = h('button', { class: state.dup.mode === mode ? 'active' : '' }, label);
+        btn.addEventListener('click', () => switchMode(mode));
+        modes.append(btn);
+    }
     const body = h('div', { class: 'side-body' });
-    root.append(body);
+    root.append(modes, body);
+    if (state.dup.mode === 'rows') {
+        renderRows(body);
+    } else {
+        renderColumns(body);
+    }
+}
+
+function renderRows(body: HTMLElement): void {
+    const info = state.info;
+    body.append(h('div', { class: 'u-summary' }, 'Rows are duplicates when the chosen columns have the same values.'));
+    const filter = h('input', { type: 'search', placeholder: 'Filter columns…', 'aria-label': 'Filter columns' });
+    const list = h('div', { class: 'col-check' });
+    const labels: { el: HTMLElement; text: string }[] = [];
+    const boxes: HTMLInputElement[] = [];
+    const sync = (): void => {
+        find.disabled = state.dup.selected.length === 0 || state.analysisLoading;
+    };
+    (info?.header ?? []).forEach((text, c) => {
+        const box = h('input', { type: 'checkbox' });
+        box.checked = state.dup.selected.includes(c);
+        box.addEventListener('change', () => {
+            const s = state.dup.selected.filter((x) => x !== c);
+            if (box.checked) {
+                s.push(c);
+            }
+            state.dup.selected = s.sort((a, b) => a - b);
+            sync();
+        });
+        boxes.push(box);
+        const el = h('label', {}, box, h('span', {}, text));
+        labels.push({ el, text: text.toLowerCase() });
+        list.append(el);
+    });
+    filter.addEventListener('input', () => {
+        const q = filter.value.toLowerCase();
+        for (const l of labels) {
+            l.el.hidden = q !== '' && !l.text.includes(q);
+        }
+    });
+    const all = h('button', {}, 'All columns');
+    all.addEventListener('click', () => {
+        state.dup.selected = (info?.header ?? []).map((_, i) => i);
+        boxes.forEach((b) => (b.checked = true));
+        sync();
+    });
+    const none = h('button', {}, 'None');
+    none.addEventListener('click', () => {
+        state.dup.selected = [];
+        boxes.forEach((b) => (b.checked = false));
+        sync();
+    });
+    const find = h('button', {}, 'Find duplicates');
+    find.addEventListener('click', () => {
+        if (state.dup.selected.length > 0) {
+            scanRows();
+        }
+    });
+    body.append(filter, list, h('div', { class: 'dup-modes' }, all, none, find));
+    sync();
+
     if (state.analysisLoading) {
-        const cancel = h('button', {}, 'Cancel');
-        cancel.addEventListener('click', () => post({ type: 'cancel', kind: 'analysis', jobId: state.analysisJob }));
-        body.append(h('div', { class: 'message' }, 'Looking for duplicates…'), cancel);
+        scanning(body);
         return;
     }
     if (state.analysisError) {
-        body.append(h('div', { class: 'message err' }, `Could not scan the column: ${state.analysisError}`));
+        body.append(h('div', { class: 'message err' }, `Could not scan: ${state.analysisError}`));
         return;
     }
     const r = state.duplicates;
-    if (!r || r.columns[0] !== column) {
-        body.append(h('div', { class: 'message' }, 'The scan was cancelled. Choose "Find duplicates" again to retry.'));
+    if (!r || r.columns.length !== state.dup.selected.length || r.columns.some((c, i) => c !== state.dup.selected[i])) {
         return;
     }
     if (r.groups.length === 0) {
-        body.append(h('div', { class: 'message' }, r.capped ? 'No duplicates found among the first 3,000,000 distinct values.' : 'No duplicate values in this column.'));
+        body.append(h('div', { class: 'message' }, 'No duplicate rows for these columns.'));
         return;
     }
-    let text = `${fmt(r.duplicateKeys)} duplicated values in ${fmt(r.duplicateRows)} rows`;
+    let text = `${fmt(r.duplicateKeys)} duplicated keys in ${fmt(r.duplicateRows)} rows`;
     if (r.truncated) {
         text += ` · showing the top ${fmt(r.groups.length)}`;
     }
     if (r.capped) {
         text += ' · key limit reached, counts may be incomplete';
     }
-    body.append(h('div', { class: 'u-summary' }, text), h('div', { class: 'u-summary' }, 'Click a value to show only its rows.'));
-    const list = h('div', { class: 'u-list' });
+    body.append(h('div', { class: 'u-summary' }, text), h('div', { class: 'u-summary' }, 'Click a key to show only its rows.'));
+    const results = h('div', { class: 'u-list' });
     for (const g of r.groups.slice(0, MAX_ROWS)) {
-        const value = g.key[0] ?? '';
-        const row = h('button', { class: 'dup-row', title: value },
-            h('span', { class: 'u-val' }, value === '' ? '(empty)' : value.slice(0, 200)),
+        const label = g.key.map((v) => (v === '' ? '(empty)' : v.slice(0, 200))).join(' · ');
+        const row = h('button', { class: 'dup-row', title: label },
+            h('span', { class: 'u-val' }, label),
             h('span', { class: 'u-count' }, `×${fmt(g.count)} · first row ${fmt(g.firstRow + 1)}`));
         row.addEventListener('click', () => {
-            state.columnFilters[column] = [value];
+            state.keyFilter = { columns: r.columns, values: g.key };
+            state.columnFilters = {};
             applyFilters();
+            emit('table');
+            emit('panel');
         });
-        list.append(row);
+        results.append(row);
     }
-    body.append(list);
+    body.append(results);
+}
+
+function hideMany(columns: number[]): void {
+    for (const c of columns) {
+        const layout = state.layout;
+        if (layout && visibleColumns(layout).filter((v) => v !== c).length === 0) {
+            return;
+        }
+        hideColumn(c);
+    }
+}
+
+function renderColumns(body: HTMLElement): void {
+    if (state.analysisLoading) {
+        scanning(body);
+        return;
+    }
+    if (state.analysisError) {
+        body.append(h('div', { class: 'message err' }, `Could not scan: ${state.analysisError}`));
+        return;
+    }
+    const r = state.duplicateColumns;
+    if (!r) {
+        body.append(h('div', { class: 'message' }, 'The scan was cancelled. Choose "Columns" again to retry.'));
+        return;
+    }
+    if (r.groups.length === 0 && r.emptyColumns.length === 0) {
+        body.append(h('div', { class: 'message' }, 'No duplicate or empty columns.'));
+        return;
+    }
+    for (const g of r.groups) {
+        const btn = h('button', {}, 'Hide extra copies');
+        btn.addEventListener('click', () => hideMany(g.slice(1)));
+        body.append(h('div', { class: 'u-summary' }, `Identical columns: ${g.map(name).join(', ')}`), btn);
+    }
+    if (r.emptyColumns.length > 0) {
+        const btn = h('button', {}, 'Hide empty columns');
+        btn.addEventListener('click', () => hideMany(r.emptyColumns));
+        body.append(h('div', { class: 'u-summary' }, `Empty columns: ${r.emptyColumns.map(name).join(', ')}`), btn);
+    }
 }

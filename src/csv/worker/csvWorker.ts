@@ -126,6 +126,15 @@ async function handle(req: WorkerRequest): Promise<void> {
                 }
                 return;
             }
+            case 'duplicateColumns': {
+                const token = tokenFor(req.id);
+                try {
+                    send({ type: 'result', id: req.id, data: await getEngine().duplicateColumns(token) });
+                } finally {
+                    tokens.delete(req.id);
+                }
+                return;
+            }
             case 'nonEmptyColumns': {
                 const token = tokenFor(req.id);
                 try {

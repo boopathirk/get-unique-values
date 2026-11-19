@@ -96,6 +96,14 @@ export function mountSearch(root: HTMLElement): void {
             });
             chips.append(chip);
         }
+        if (state.keyFilter) {
+            const chip = h('button', { class: 'chip', title: 'Show all rows again' }, `Duplicate key: ${state.keyFilter.values.map((v) => (v === '' ? '(empty)' : v)).join(' · ')} ✕`);
+            chip.addEventListener('click', () => {
+                state.keyFilter = null;
+                applyFilters();
+            });
+            chips.append(chip);
+        }
         clearAll.hidden = !state.filterActive;
     };
 

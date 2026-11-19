@@ -2,7 +2,7 @@ import type { ThemeKind } from '../csv/core/colors';
 import type { Layout } from '../csv/core/layout';
 import type { Predicate } from '../csv/core/predicates';
 import type { ViewToHost, ViewerSettings } from '../csv/protocol';
-import type { ColumnStats, DuplicateResult, FileInfo, FilterProgress, IndexProgress, UniqueResult } from '../csv/types';
+import type { ColumnStats, DuplicateColumnsResult, DuplicateResult, FileInfo, FilterProgress, IndexProgress, UniqueResult } from '../csv/types';
 
 interface VsCodeApi {
     postMessage(message: unknown): void;
@@ -20,7 +20,7 @@ export type Panel =
     | { kind: 'detail'; rowNumber: number; col: number }
     | { kind: 'record'; rowNumber: number }
     | { kind: 'stats'; column: number }
-    | { kind: 'duplicates'; column: number }
+    | { kind: 'duplicates' }
     | null;
 
 export interface Banner {
@@ -75,6 +75,9 @@ export const state = {
     uniqueError: '',
     stats: null as ColumnStats | null,
     duplicates: null as DuplicateResult | null,
+    dup: { mode: 'rows' as 'rows' | 'columns', selected: [] as number[] },
+    duplicateColumns: null as DuplicateColumnsResult | null,
+    keyFilter: null as { columns: number[]; values: string[] } | null,
     analysisLoading: false,
     analysisJob: 0,
     analysisError: '',
@@ -99,6 +102,9 @@ export function buildPredicates(skipSearch = false): Predicate[] {
     if (state.badRowsOnly) {
         predicates.push({ kind: 'badRows' });
     }
+    if (state.keyFilter) {
+        predicates.push({ kind: 'keyEquals', columns: state.keyFilter.columns, values: state.keyFilter.values });
+    }
     return predicates;
 }
 
@@ -121,6 +127,7 @@ export function resetForNewFile(): void {
     state.search = emptySearch();
     state.columnFilters = {};
     state.badRowsOnly = false;
+    state.keyFilter = null;
     state.filterActive = false;
     state.filterRunning = false;
     state.filterComplete = true;
@@ -134,6 +141,9 @@ export function resetForNewFile(): void {
     state.uniqueJob++;
     state.stats = null;
     state.duplicates = null;
+    state.keyFilter = null;
+    state.duplicateColumns = null;
+    state.dup = { mode: 'rows', selected: [] };
     state.analysisLoading = false;
     state.analysisError = '';
     state.analysisJob++;

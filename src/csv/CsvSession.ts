@@ -8,7 +8,7 @@ import type { ColorMode, LongText } from './core/layout';
 import type { Predicate } from './core/predicates';
 import type { HostToView, ViewCommand, ViewToHost, ViewerSettings } from './protocol';
 import type {
-    ColumnStats, DuplicateResult, ExportFormat, ExportOptions, ExportProgress, ExportResult, FileInfo, FilterProgress, FilterResult, ImportProgress, IndexProgress, OpenResult, PageResult, ParseOptions, UniqueResult,
+    ColumnStats, DuplicateColumnsResult, DuplicateResult, ExportFormat, ExportOptions, ExportProgress, ExportResult, FileInfo, FilterProgress, FilterResult, ImportProgress, IndexProgress, OpenResult, PageResult, ParseOptions, UniqueResult,
 } from './types';
 import { XLSX_MAX_ROWS } from './types';
 
@@ -156,6 +156,10 @@ export class CsvSession implements vscode.Disposable {
             case 'stats':
                 this.startAnalysis(m.jobId, { type: 'stats', column: m.column }, (result, error) =>
                     this.post({ type: 'stats', jobId: m.jobId, result: result as ColumnStats | null, error }));
+                break;
+            case 'duplicateColumns':
+                this.startAnalysis(m.jobId, { type: 'duplicateColumns' }, (result, error) =>
+                    this.post({ type: 'duplicateColumns', jobId: m.jobId, result: result as DuplicateColumnsResult | null, error }));
                 break;
             case 'duplicates':
                 this.startAnalysis(m.jobId, { type: 'duplicates', columns: m.columns }, (result, error) =>
@@ -368,7 +372,7 @@ export class CsvSession implements vscode.Disposable {
 
     private startAnalysis(
         jobId: number,
-        body: { type: 'stats'; column: number } | { type: 'duplicates'; columns: number[] },
+        body: { type: 'stats'; column: number } | { type: 'duplicates'; columns: number[] } | { type: 'duplicateColumns' },
         reply: (result: unknown, error?: string) => void,
     ): void {
         const { id, promise } = this.worker.request<unknown>(body);

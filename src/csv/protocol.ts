@@ -1,7 +1,7 @@
 import type { Predicate } from './core/predicates';
 import type { ColorMode, Layout, LongText } from './core/layout';
 import type {
-    ColumnStats, DuplicateResult, ExportOptions, ExportProgress, FileInfo, FilterProgress, FilterResult, ImportProgress, IndexProgress, PageResult, ParseOptions, UniqueResult,
+    ColumnStats, DuplicateColumnsResult, DuplicateResult, ExportOptions, ExportProgress, FileInfo, FilterProgress, FilterResult, ImportProgress, IndexProgress, PageResult, ParseOptions, UniqueResult,
 } from './types';
 
 // ---- host <-> worker ------------------------------------------------------
@@ -13,6 +13,7 @@ export type WorkerRequest =
     | { id: number; type: 'unique'; column: number }
     | { id: number; type: 'stats'; column: number }
     | { id: number; type: 'duplicates'; columns: number[] }
+    | { id: number; type: 'duplicateColumns' }
     | { id: number; type: 'nonEmptyColumns' }
     | { id: number; type: 'export'; options: ExportOptions }
     | { id: number; type: 'xlsxSheets'; path: string }
@@ -52,6 +53,7 @@ export type HostToView =
     | { type: 'unique'; jobId: number; result: UniqueResult | null; error?: string }
     | { type: 'stats'; jobId: number; result: ColumnStats | null; error?: string }
     | { type: 'duplicates'; jobId: number; result: DuplicateResult | null; error?: string }
+    | { type: 'duplicateColumns'; jobId: number; result: DuplicateColumnsResult | null; error?: string }
     | { type: 'nonEmpty'; jobId: number; columns: number[] | null }
     | { type: 'fileChanged'; deleted: boolean }
     | { type: 'command'; name: ViewCommand };
@@ -65,6 +67,7 @@ export type ViewToHost =
     | { type: 'unique'; jobId: number; column: number }
     | { type: 'stats'; jobId: number; column: number }
     | { type: 'duplicates'; jobId: number; columns: number[] }
+    | { type: 'duplicateColumns'; jobId: number }
     | { type: 'cancel'; kind: 'filter' | 'unique' | 'analysis'; jobId: number }
     | { type: 'nonEmpty'; jobId: number }
     | { type: 'export'; columns: number[] }

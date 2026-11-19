@@ -229,9 +229,12 @@ export class CsvEngine {
         this.throwIfIndexFailed();
         if (token.cancelled || this.view !== result) {
             if (this.view === result) {
-                this.viewComplete = true; // cancelled by the user: keep the (empty) partial view
+                // Cancelled before any scanning: the search simply stops and every row shows again.
+                this.view = null;
+                this.viewComplete = true;
+                return { matches: this.dataRowCount, complete: false };
             }
-            return { matches: this.view === result ? result.length : 0, complete: false };
+            return { matches: 0, complete: false };
         }
         const runs: Run[] = compiled.badRowsOnly ? coalesce(this.badDataRows()) : [[0, this.dataRowCount]];
         const total = runs.reduce((n, r) => n + r[1], 0);

@@ -44,22 +44,18 @@ export function goToPage(page: number): void {
 /** Send the current search + column filters + bad-rows flag to the worker as one AND-ed filter. */
 export function applyFilters(): void {
     const s = state.search;
+    let regexError = '';
     if (s.regex && s.query !== '') {
         try {
             new RegExp(s.query);
         } catch (err) {
-            // Report a bad regex inline; nothing is sent to the worker (it would reject it anyway).
-            state.filterError = err instanceof Error ? err.message : String(err);
-            state.filterActive = false;
-            state.filterRunning = false;
-            state.filtering = null;
-            emit('status');
-            return;
+            regexError = err instanceof Error ? err.message : String(err);
         }
     }
-    const predicates = buildPredicates();
+    // An invalid regex is left out of the filter, so the table always matches what the host applies.
+    const predicates = buildPredicates(regexError !== '');
     state.filterJob++;
-    state.filterError = '';
+    state.filterError = regexError === '' ? '' : `Invalid regular expression — search term ignored: ${regexError}`;
     state.filterActive = predicates.length > 0;
     state.filterRunning = predicates.length > 0;
     state.filtering = null;

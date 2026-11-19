@@ -81,6 +81,11 @@ export class WorkerClient {
         return this.worker.terminate();
     }
 
+    /** Test-only: feed a message through the normal worker message path. */
+    deliverForTest(m: WorkerMessage): void {
+        this.onMessage(m);
+    }
+
     private onMessage(m: WorkerMessage): void {
         if (this.disposed) {
             return;

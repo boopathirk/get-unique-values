@@ -3,6 +3,7 @@ import * as fs from 'fs';
 import * as os from 'os';
 import * as path from 'path';
 import { WorkerClient } from '../../csv/WorkerClient';
+import type { WorkerMessage } from '../../csv/protocol';
 import type { FilterResult, IndexProgress, OpenResult, PageResult, UniqueResult } from '../../csv/types';
 
 // out-test/test/unit -> repo root -> out/csvWorker.js (built by `npm run test:unit` via esbuild)
@@ -150,5 +151,40 @@ suite('WorkerClient open edge cases', function () {
         assert.deepStrictEqual(results.map((r) => r.kind), ['ok', 'ok', 'ok']);
         const page = await client.request<PageResult>({ type: 'page', page: 0, pageSize: 10 }).promise;
         assert.deepStrictEqual(page.rows, [['c1'], ['c2']]);
+    });
+});
+
+suite('WorkerClient message handling', function () {
+    this.timeout(20000);
+
+    const progress = (id: number): WorkerMessage => ({
+        type: 'progress', id,
+        data: { rows: 1, bytes: 1, total: 10, done: false, badRows: 0, warnings: [] },
+    });
+
+    test('a new open drops the lingering progress handler of the previous open', async () => {
+        const client = new WorkerClient(workerPath);
+        const missing = path.join(os.tmpdir(), 'csv-worker-does-not-exist.csv');
+        let events = 0;
+        const first = client.request<OpenResult>({ type: 'open', path: missing, options: {} }, () => { events++; });
+        first.promise.catch(() => undefined);
+        // Everything below runs synchronously, before the real worker can answer.
+        client.deliverForTest({ type: 'result', id: first.id, data: { kind: 'empty' } });
+        client.deliverForTest(progress(first.id));
+        assert.strictEqual(events, 1, 'index progress keeps flowing after open resolved');
+        const second = client.request<OpenResult>({ type: 'open', path: missing, options: {} });
+        second.promise.catch(() => undefined);
+        client.deliverForTest(progress(first.id));
+        assert.strictEqual(events, 1, 'stale handler must not be called after a new open');
+        client.dispose();
+    });
+
+    test('messages arriving after dispose are ignored', () => {
+        const client = new WorkerClient(workerPath);
+        const fatals: string[] = [];
+        client.onFatal = (m) => fatals.push(m);
+        client.dispose();
+        client.deliverForTest({ type: 'fatal', message: 'late' });
+        assert.deepStrictEqual(fatals, []);
     });
 });

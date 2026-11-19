@@ -238,6 +238,19 @@ suite('CsvEngine', () => {
             assert.deepStrictEqual(page.rowNumbers, [0, 1, 2, 3]);
         });
 
+        test('cancelling before indexing finishes drops the empty view so all rows show', async () => {
+            const engine = await opened();
+            const token = { cancelled: false };
+            const pending = engine.filter(blue(), token, noop);
+            token.cancelled = true;
+            const indexing = engine.index(noop, live());
+            assert.deepStrictEqual(await pending, { matches: 4, complete: false });
+            await indexing;
+            const page = await engine.readPage(0, 10);
+            assert.strictEqual(page.total, 4);
+            assert.strictEqual(page.complete, true);
+        });
+
         test('readPage beyond the indexed rows resolves once indexing completes', async () => {
             const engine = await opened();
             const page = engine.readPage(0, 100);

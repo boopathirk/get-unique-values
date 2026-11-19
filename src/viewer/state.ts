@@ -73,10 +73,10 @@ export const state = {
     uniqueError: '',
 };
 
-export function buildPredicates(): Predicate[] {
+export function buildPredicates(skipSearch = false): Predicate[] {
     const predicates: Predicate[] = [];
     const s = state.search;
-    if (s.query !== '') {
+    if (s.query !== '' && !skipSearch) {
         predicates.push({
             kind: 'search',
             query: s.query,

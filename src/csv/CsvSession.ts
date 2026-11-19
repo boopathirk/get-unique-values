@@ -51,6 +51,7 @@ export class CsvSession implements vscode.Disposable {
     private parseOptions: ParseOptions;
     private info: FileInfo | undefined;
     private openGen = 0;
+    private lastError: { gen: number; message: string; retry: boolean } | undefined;
 
     /** Most recent page sent to the webview (read by the integration test). */
     lastPage: PageResult | undefined;
@@ -95,7 +96,7 @@ export class CsvSession implements vscode.Disposable {
         const worker = new WorkerClient(path.join(this.context.extensionPath, 'out', 'csvWorker.js'));
         worker.onFatal = (message) => {
             if (worker === this.worker) {
-                this.post({ type: 'error', message, retry: true });
+                this.postError(message, true);
             }
         };
         return worker;
@@ -115,7 +116,7 @@ export class CsvSession implements vscode.Disposable {
         try {
             await this.handleMessage(m);
         } catch (err) {
-            this.post({ type: 'error', message: errorMessage(err) });
+            this.postError(errorMessage(err));
         }
     }
 
@@ -149,7 +150,7 @@ export class CsvSession implements vscode.Disposable {
             case 'nonEmpty':
                 this.worker.request<number[] | null>({ type: 'nonEmptyColumns' }).promise.then(
                     (columns) => this.post({ type: 'nonEmpty', jobId: m.jobId, columns }),
-                    (err) => this.post({ type: 'error', message: errorMessage(err) }),
+                    (err) => this.postError(errorMessage(err)),
                 );
                 break;
             case 'chooseParseOptions':
@@ -215,7 +216,7 @@ export class CsvSession implements vscode.Disposable {
             this.lastPage = result;
             this.post({ type: 'page', reqId, result });
         } catch (err) {
-            this.post({ type: 'error', message: errorMessage(err) });
+            this.postError(errorMessage(err));
         }
     }
 
@@ -312,6 +313,16 @@ export class CsvSession implements vscode.Disposable {
     }
 
     // ---- helpers -----------------------------------------------------------
+
+    /** Post an error banner, skipping an identical repeat within the same open generation. */
+    private postError(message: string, retry?: boolean): void {
+        const last = this.lastError;
+        if (last?.gen === this.openGen && last.message === message && (!retry || last.retry)) {
+            return;
+        }
+        this.lastError = { gen: this.openGen, message, retry: retry === true };
+        this.post({ type: 'error', message, retry });
+    }
 
     private post(message: HostToView): void {
         if (!this.disposed) {

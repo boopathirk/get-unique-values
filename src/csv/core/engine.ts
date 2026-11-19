@@ -63,6 +63,11 @@ export class CsvEngine {
         });
     }
 
+    /** The file this engine reads. */
+    get sourcePath(): string {
+        return this.path;
+    }
+
     private get file(): fs.promises.FileHandle {
         if (!this.fh) {
             throw new Error('The file is closed.');

@@ -1,6 +1,7 @@
 import * as fs from 'fs';
 import ExcelJS from 'exceljs';
 import { createFormatter } from '../core/formats';
+import { isSameFile, partPath } from '../core/paths';
 import type { CsvEngine } from '../core/engine';
 import type { CancelToken, ExportFormat, ExportOptions, ExportResult } from '../types';
 import { XLSX_MAX_ROWS } from '../types';
@@ -13,22 +14,45 @@ export function xlsxValue(v: string): string | number {
     return /^-?(0|[1-9]\d{0,14})(\.\d+)?$/.test(v) && String(Number(v)) === v ? Number(v) : v;
 }
 
+/** A valid Excel sheet name: no []:*?/\\, no leading or trailing apostrophe, at most 31 characters. */
+export function sanitizeSheetName(name: string): string {
+    const trim = (s: string): string => s.replace(/^'+|'+$/g, '');
+    const clean = trim(trim(name.replace(/[[\]:*?/\\]/g, '_')).slice(0, 31));
+    return clean === '' ? 'Data' : clean;
+}
+
+/**
+ * Write the export to a temporary `.part` file next to `opts.outPath` and rename it into place only once
+ * it is complete, so a cancelled or failed export never leaves a partial file (or destroys an existing one).
+ * Refuses to write onto the file the engine is reading.
+ */
 export async function exportToFile(
     engine: CsvEngine,
     opts: ExportOptions,
     token: CancelToken,
     onProgress: (done: number, total: number) => void,
 ): Promise<ExportResult | null> {
+    if (await isSameFile(opts.outPath, engine.sourcePath)) {
+        throw new Error('The export target is the file being viewed. Choose another file name.');
+    }
     const info = await engine.getInfo();
     const header = opts.columns.map((c) => info.header[c] ?? `Column ${c + 1}`);
     const pick = (row: string[]): string[] => opts.columns.map((c) => row[c] ?? '');
-    const result = opts.format === 'xlsx'
-        ? await writeXlsx(engine, opts, header, pick, token, onProgress)
-        : await writeText(engine, opts, header, pick, token, onProgress);
-    if (result === null) {
-        await fs.promises.rm(opts.outPath, { force: true });
+    const part = partPath(opts.outPath);
+    try {
+        const written = opts.format === 'xlsx'
+            ? await writeXlsx(engine, opts, part, header, pick, token, onProgress)
+            : await writeText(engine, opts, part, header, pick, token, onProgress);
+        if (written === null) {
+            await fs.promises.rm(part, { force: true });
+            return null;
+        }
+        await fs.promises.rename(part, opts.outPath);
+        return { ...written, path: opts.outPath };
+    } catch (err) {
+        await fs.promises.rm(part, { force: true });
+        throw err;
     }
-    return result;
 }
 
 function closeStream(stream: fs.WriteStream): Promise<void> {
@@ -45,13 +69,14 @@ function closeStream(stream: fs.WriteStream): Promise<void> {
 async function writeText(
     engine: CsvEngine,
     opts: ExportOptions,
+    file: string,
     header: string[],
     pick: (row: string[]) => string[],
     token: CancelToken,
     onProgress: (done: number, total: number) => void,
-): Promise<ExportResult | null> {
+): Promise<Omit<ExportResult, 'path'> | null> {
     const fmt = createFormatter(opts.format as Exclude<ExportFormat, 'xlsx'>, header, { table: opts.table });
-    const stream = fs.createWriteStream(opts.outPath);
+    const stream = fs.createWriteStream(file);
     await new Promise<void>((resolve, reject) => {
         stream.once('open', () => resolve());
         stream.once('error', reject);
@@ -73,10 +98,9 @@ async function writeText(
         }
         await write(fmt.end());
         await new Promise<void>((resolve) => stream.end(resolve));
-        return { rows, truncated: false, path: opts.outPath };
+        return { rows, truncated: false };
     } catch (err) {
         await closeStream(stream);
-        await fs.promises.rm(opts.outPath, { force: true });
         throw err;
     }
 }
@@ -84,13 +108,14 @@ async function writeText(
 async function writeXlsx(
     engine: CsvEngine,
     opts: ExportOptions,
+    file: string,
     header: string[],
     pick: (row: string[]) => string[],
     token: CancelToken,
     onProgress: (done: number, total: number) => void,
-): Promise<ExportResult | null> {
-    const wb = new ExcelJS.stream.xlsx.WorkbookWriter({ filename: opts.outPath, useStyles: false, useSharedStrings: false });
-    const ws = wb.addWorksheet((opts.sheetName || 'Data').slice(0, 31));
+): Promise<Omit<ExportResult, 'path'> | null> {
+    const wb = new ExcelJS.stream.xlsx.WorkbookWriter({ filename: file, useStyles: false, useSharedStrings: false });
+    const ws = wb.addWorksheet(sanitizeSheetName(opts.sheetName ?? ''));
     ws.addRow(header).commit();
     let rows = 0;
     let truncated = false;
@@ -114,10 +139,9 @@ async function writeXlsx(
         } catch {
             // ignore: the original error is what matters
         }
-        await fs.promises.rm(opts.outPath, { force: true });
         throw err;
     }
     ws.commit();
     await wb.commit();
-    return outcome === 'cancelled' ? null : { rows, truncated, path: opts.outPath };
+    return outcome === 'cancelled' ? null : { rows, truncated };
 }

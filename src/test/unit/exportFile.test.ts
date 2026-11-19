@@ -4,7 +4,7 @@ import * as os from 'os';
 import * as path from 'path';
 import ExcelJS from 'exceljs';
 import { CsvEngine, Tuning } from '../../csv/core/engine';
-import { XLSX_MAX_ROWS, exportToFile, xlsxValue } from '../../csv/export/exportFile';
+import { XLSX_MAX_ROWS, exportToFile, sanitizeSheetName, xlsxValue } from '../../csv/export/exportFile';
 import type { ExportOptions } from '../../csv/export/exportFile';
 import type { CancelToken } from '../../csv/types';
 
@@ -31,6 +31,7 @@ suite('exportToFile', () => {
     }
 
     const out = (name: string): string => path.join(dir, name);
+    const parts = (): string[] => fs.readdirSync(dir).filter((f) => f.endsWith('.part'));
     const opts = (o: Partial<ExportOptions> & { outPath: string }): ExportOptions => ({
         format: 'csv', scope: 'all', columns: [0, 1, 2], ...o,
     });
@@ -47,6 +48,58 @@ suite('exportToFile', () => {
         const r = await exportToFile(engine, opts({ outPath: out('a.csv') }), live(), noop);
         assert.deepStrictEqual(r, { rows: 3, truncated: false, path: out('a.csv') });
         assert.strictEqual(fs.readFileSync(out('a.csv'), 'utf8'), 'id,name,price\n1,Blue,10\n2,"Red, dark",\n3,Blue,30\n');
+        assert.deepStrictEqual(parts(), [], 'no .part file is left behind');
+    });
+
+    for (const format of ['csv', 'json', 'xlsx'] as const) {
+        test(`${format}: exporting onto the viewed file rejects and leaves it intact`, async () => {
+            const engine = await load(CSV);
+            const before = fs.readFileSync(engine.sourcePath);
+            await assert.rejects(
+                () => exportToFile(engine, opts({ outPath: engine.sourcePath, format }), live(), noop),
+                /file being viewed/,
+            );
+            assert.ok(fs.readFileSync(engine.sourcePath).equals(before), 'source must be byte-for-byte unchanged');
+            assert.deepStrictEqual(parts(), []);
+        });
+    }
+
+    test('a relative or differently spelled path to the viewed file is refused too', async () => {
+        const engine = await load(CSV);
+        const before = fs.readFileSync(engine.sourcePath);
+        const odd = path.join(path.dirname(engine.sourcePath), '.', 'sub', '..', path.basename(engine.sourcePath));
+        await assert.rejects(() => exportToFile(engine, opts({ outPath: odd }), live(), noop), /file being viewed/);
+        const rel = path.relative(process.cwd(), engine.sourcePath);
+        await assert.rejects(() => exportToFile(engine, opts({ outPath: rel }), live(), noop), /file being viewed/);
+        assert.ok(fs.readFileSync(engine.sourcePath).equals(before));
+    });
+
+    test('a hard link to the viewed file is refused', async () => {
+        const engine = await load(CSV);
+        const link = out('hardlink.csv');
+        fs.linkSync(engine.sourcePath, link);
+        const before = fs.readFileSync(engine.sourcePath);
+        await assert.rejects(() => exportToFile(engine, opts({ outPath: link }), live(), noop), /file being viewed/);
+        assert.ok(fs.readFileSync(engine.sourcePath).equals(before));
+        fs.rmSync(link);
+    });
+
+    test('xlsx: successful export leaves no .part file', async () => {
+        const engine = await load(CSV);
+        await exportToFile(engine, opts({ outPath: out('ok.xlsx'), format: 'xlsx' }), live(), noop);
+        assert.ok(fs.existsSync(out('ok.xlsx')));
+        assert.deepStrictEqual(parts(), []);
+    });
+
+    test('an existing target is only replaced once the export succeeded', async () => {
+        const engine = await load(CSV);
+        const p = out('existing.csv');
+        fs.writeFileSync(p, 'old');
+        assert.strictEqual(await exportToFile(engine, opts({ outPath: p }), { cancelled: true }, noop), null);
+        assert.strictEqual(fs.readFileSync(p, 'utf8'), 'old', 'a cancelled export keeps the old file');
+        await exportToFile(engine, opts({ outPath: p }), live(), noop);
+        assert.strictEqual(fs.readFileSync(p, 'utf8').split('\n')[0], 'id,name,price');
+        assert.deepStrictEqual(parts(), []);
     });
 
     test('column subset and reorder', async () => {
@@ -90,6 +143,15 @@ suite('exportToFile', () => {
         const r = await exportToFile(engine, opts({ outPath: out('g.csv') }), { cancelled: true }, noop);
         assert.strictEqual(r, null);
         assert.strictEqual(fs.existsSync(out('g.csv')), false);
+        assert.deepStrictEqual(parts(), []);
+    });
+
+    test('xlsx: cancelled export leaves neither the file nor a .part', async () => {
+        const engine = await load(CSV);
+        const r = await exportToFile(engine, opts({ outPath: out('g.xlsx'), format: 'xlsx' }), { cancelled: true }, noop);
+        assert.strictEqual(r, null);
+        assert.strictEqual(fs.existsSync(out('g.xlsx')), false);
+        assert.deepStrictEqual(parts(), []);
     });
 
     test('unwritable path rejects', async () => {
@@ -105,6 +167,7 @@ suite('exportToFile', () => {
             failing.exportRows = () => Promise.reject(new Error('boom'));
             await assert.rejects(() => exportToFile(engine, opts({ outPath: p, format }), live(), noop), /boom/);
             assert.strictEqual(fs.existsSync(p), false);
+            assert.deepStrictEqual(parts(), []);
         });
     }
 
@@ -119,6 +182,25 @@ suite('exportToFile', () => {
         assert.deepStrictEqual((ws.getRow(1).values as unknown[]).slice(1), ['id', 'name', 'price']);
         assert.deepStrictEqual((ws.getRow(2).values as unknown[]).slice(1), [1, 'Blue', 10]);
         assert.strictEqual(ws.getRow(3).getCell(2).value, 'Red, dark');
+    });
+
+    test('xlsx: an invalid sheet name is sanitized so the workbook opens', async () => {
+        const engine = await load(CSV);
+        await exportToFile(engine, opts({ outPath: out('s.xlsx'), format: 'xlsx', sheetName: 'report[2024]' }), live(), noop);
+        const wb = new ExcelJS.Workbook();
+        await wb.xlsx.readFile(out('s.xlsx'));
+        assert.ok(wb.getWorksheet('report_2024_'));
+    });
+
+    test('sanitizeSheetName', () => {
+        assert.strictEqual(sanitizeSheetName('report[2024]'), 'report_2024_');
+        assert.strictEqual(sanitizeSheetName('a:b*c?d/e\\f'), 'a_b_c_d_e_f');
+        assert.strictEqual(sanitizeSheetName(''), 'Data');
+        assert.strictEqual(sanitizeSheetName("'''"), 'Data');
+        assert.strictEqual(sanitizeSheetName("'quoted'"), 'quoted');
+        assert.strictEqual(sanitizeSheetName("it's"), "it's");
+        assert.strictEqual(sanitizeSheetName('x'.repeat(40)), 'x'.repeat(31));
+        assert.strictEqual(sanitizeSheetName(`${'y'.repeat(30)}'z`), `${'y'.repeat(30)}`);
     });
 
     test('xlsxValue keeps leading zeros and long numbers as text', () => {

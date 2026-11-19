@@ -158,6 +158,9 @@ export class CsvSession implements vscode.Disposable {
             );
             this.post({ type: 'opened', info: result.info, layout, settings, fileName: path.basename(this.uri.fsPath) });
         } catch (err) {
+            if (gen !== this.openGen) {
+                return;
+            }
             this.post({ type: 'status', kind: 'error', message: errorMessage(err) });
         }
     }

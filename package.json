@@ -1,7 +1,7 @@
 {
   "name": "get-unique-values",
   "displayName": "get-unique-values",
-  "publisher": "boopathi",
+  "publisher": "boopathi08",
   "description": "Remove duplicate lines from the file or selection",
   "version": "0.0.1",
   "engines": {
@@ -47,12 +47,17 @@
     }
   },
   "scripts": {
-    "vscode:prepublish": "npm run compile",
-    "compile": "tsc -p ./",
-    "watch": "tsc -watch -p ./",
-    "pretest": "npm run compile && npm run lint",
+    "vscode:prepublish": "npm run typecheck && node esbuild.mjs --production",
+    "build": "node esbuild.mjs",
+    "compile": "npm run typecheck && node esbuild.mjs",
+    "watch": "node esbuild.mjs --watch",
+    "typecheck": "tsc -p ./ --noEmit && tsc -p src/viewer --noEmit",
     "lint": "eslint src",
-    "test": "vscode-test"
+    "test:unit": "node esbuild.mjs && tsc -p tsconfig.test.json && mocha --ui tdd \"out-test/test/unit/**/*.test.js\"",
+    "test:integration": "node esbuild.mjs && tsc -p tsconfig.test.json && vscode-test",
+    "pretest": "npm run typecheck && npm run lint",
+    "test": "npm run test:unit && npm run test:integration",
+    "perf": "tsc -p tsconfig.test.json && node --expose-gc scripts/perf.mjs"
   },
   "devDependencies": {
     "@types/mocha": "^10.0.10",
@@ -62,7 +67,9 @@
     "@typescript-eslint/parser": "^8.31.1",
     "@vscode/test-cli": "^0.0.10",
     "@vscode/test-electron": "^2.5.2",
+    "esbuild": "^0.28.2",
     "eslint": "^9.25.1",
+    "mocha": "^12.0.3",
     "typescript": "^5.8.3"
   },
   "repository": {

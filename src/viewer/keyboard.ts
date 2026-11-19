@@ -25,7 +25,8 @@ function move(rowDelta: number, colDelta: number): void {
 export function mountKeyboard(): void {
     window.addEventListener('keydown', (e) => {
         const target = e.target as HTMLElement;
-        const typing = target instanceof HTMLInputElement || target instanceof HTMLSelectElement || target instanceof HTMLTextAreaElement;
+        const typing = target instanceof HTMLInputElement || target instanceof HTMLSelectElement || target instanceof HTMLTextAreaElement
+            || target.closest('button, a, [role="button"], [contenteditable="true"]') !== null;
         const mod = e.ctrlKey || e.metaKey;
         const key = e.key.toLowerCase();
 

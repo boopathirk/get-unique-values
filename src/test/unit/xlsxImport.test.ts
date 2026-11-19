@@ -55,6 +55,22 @@ suite('xlsx import', () => {
         );
     });
 
+    test('concurrent conversions to the same output both succeed', async () => {
+        const sub = fs.mkdtempSync(path.join(dir, 'race-'));
+        const out = path.join(sub, 'p.csv');
+        const [a, b] = await Promise.all([
+            convertSheetToCsv(book, 0, out, live(), noop),
+            convertSheetToCsv(book, 0, out, live(), noop),
+        ]);
+        assert.strictEqual(a, 3);
+        assert.strictEqual(b, 3);
+        assert.strictEqual(
+            fs.readFileSync(out, 'utf8'),
+            'sku,name,price,when\nA1,"Blue, ""big""",10.5,2024-01-02T00:00:00.000Z\nA2,2,,x\nA3,Rich text,,\n',
+        );
+        assert.deepStrictEqual(fs.readdirSync(sub), ['p.csv']);
+    });
+
     test('convert sheet 1', async () => {
         const out = path.join(dir, 'o.csv');
         assert.strictEqual(await convertSheetToCsv(book, 1, out, live(), noop), 0);

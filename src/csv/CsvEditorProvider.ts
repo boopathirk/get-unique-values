@@ -50,14 +50,18 @@ export function registerCsvViewer(context: vscode.ExtensionContext): CsvViewerAp
     // Best-effort: drop cached Excel conversions older than 7 days.
     void (async () => {
         const dir = path.join(context.globalStorageUri.fsPath, 'xlsx');
+        let files: string[] = [];
         try {
-            for (const f of await fs.promises.readdir(dir)) {
+            files = await fs.promises.readdir(dir);
+        } catch { /* no cache yet */ }
+        for (const f of files) {
+            try {
                 const p = path.join(dir, f);
                 if (Date.now() - (await fs.promises.stat(p)).mtimeMs > 7 * 86_400_000) {
                     await fs.promises.rm(p, { force: true });
                 }
-            }
-        } catch { /* no cache yet */ }
+            } catch { /* skip this entry */ }
+        }
     })();
 
     const editorOptions = {

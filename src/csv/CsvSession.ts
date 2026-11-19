@@ -60,6 +60,10 @@ export class CsvSession implements vscode.Disposable {
     private openGen = 0;
     private sheet: number | undefined;
     private sheetName = '';
+    /** Sheet names of the workbook, valid while the file's mtime and size are unchanged. */
+    private sheetNames: { stamp: string; names: string[] } | undefined;
+    /** Worker request id of the Excel conversion in flight, if any. */
+    private convertId: number | undefined;
     private lastError: { gen: number; message: string; retry: boolean } | undefined;
 
     /** Most recent page sent to the webview (read by the integration test). */
@@ -198,6 +202,10 @@ export class CsvSession implements vscode.Disposable {
         this.uniqueJobs.clear();
         this.analysisJobs.clear();
         this.activeFilter = undefined;
+        if (this.convertId !== undefined) {
+            this.worker.cancel(this.convertId);
+            this.convertId = undefined;
+        }
         try {
             const source = await this.resolveSource(gen);
             if (source === undefined || gen !== this.openGen) {
@@ -242,8 +250,17 @@ export class CsvSession implements vscode.Disposable {
         if (!/\.xls[xm]$/i.test(file)) {
             return { path: file, options: this.parseOptions, label: base };
         }
-        const sheets = await this.worker.request<string[]>({ type: 'xlsxSheets', path: file }).promise;
-        if (gen !== this.openGen) {
+        const stat = await fs.promises.stat(file);
+        const stamp = `${stat.mtimeMs}|${stat.size}`;
+        let sheets: string[];
+        if (this.sheetNames?.stamp === stamp) {
+            sheets = this.sheetNames.names;
+        } else {
+            sheets = await this.worker.request<string[]>({ type: 'xlsxSheets', path: file }).promise;
+            this.sheetNames = { stamp, names: sheets };
+        }
+        const live = (): boolean => gen === this.openGen && !this.disposed;
+        if (!live()) {
             return undefined;
         }
         if (sheets.length === 0) {
@@ -258,11 +275,11 @@ export class CsvSession implements vscode.Disposable {
                     sheets.map((name, i) => ({ label: name, value: i })),
                     { title: `Choose a sheet from ${base}`, placeHolder: 'Sheet' },
                 );
-                if (gen !== this.openGen) {
+                if (!live()) {
                     return undefined;
                 }
                 if (!pick) {
-                    this.post({ type: 'status', kind: 'error', message: 'No sheet chosen. Run "CSV Viewer: Choose Excel Sheet…" to pick one.' });
+                    this.post({ type: 'status', kind: 'error', message: 'No sheet chosen. Run "CSV Viewer: Choose Excel Sheet\u2026" to pick one.' });
                     return undefined;
                 }
                 this.sheet = pick.value;
@@ -270,12 +287,15 @@ export class CsvSession implements vscode.Disposable {
         }
         const sheetIndex = this.sheet;
         this.sheetName = sheets[sheetIndex];
-        const stat = await fs.promises.stat(file);
-        const hash = createHash('sha1').update(`${file}|${stat.mtimeMs}|${stat.size}|${sheetIndex}`).digest('hex').slice(0, 24);
+        const hash = createHash('sha1').update(`${file}|${stamp}|${sheetIndex}`).digest('hex').slice(0, 24);
         const cacheDir = path.join(this.context.globalStorageUri.fsPath, 'xlsx');
         await fs.promises.mkdir(cacheDir, { recursive: true });
         const out = path.join(cacheDir, `${hash}.csv`);
-        if (!fs.existsSync(out)) {
+        const cached = await fs.promises.access(out).then(() => true, () => false);
+        if (!live()) {
+            return undefined;
+        }
+        if (!cached) {
             const rows = await vscode.window.withProgress(
                 { location: vscode.ProgressLocation.Notification, title: `Reading ${base} (${this.sheetName})`, cancellable: true },
                 async (progress, cancelToken) => {
@@ -283,10 +303,20 @@ export class CsvSession implements vscode.Disposable {
                         { type: 'xlsxConvert', path: file, sheet: sheetIndex, out },
                         (p) => progress.report({ message: `${(p as ImportProgress).rows.toLocaleString()} rows` }),
                     );
+                    this.convertId = id;
                     cancelToken.onCancellationRequested(() => this.worker.cancel(id));
-                    return promise;
+                    try {
+                        return await promise;
+                    } finally {
+                        if (this.convertId === id) {
+                            this.convertId = undefined;
+                        }
+                    }
                 },
             );
+            if (!live()) {
+                return undefined;
+            }
             if (rows === null) {
                 this.post({ type: 'status', kind: 'error', message: 'Reading the Excel file was cancelled. Reload to try again.' });
                 return undefined;

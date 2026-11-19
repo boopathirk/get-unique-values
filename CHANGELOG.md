@@ -11,6 +11,7 @@ All notable changes to the "get-unique-values" extension are documented in this 
 - A distinct colour per column; truncate / wrap / full long-cell modes; cell detail panel (format JSON, copy, open in editor tab); record view.
 - Column picker: show/hide, reorder, resize, pin, hide empty, name-pattern filter, saved column sets; layout remembered per file.
 - Bad-row detection and unclosed-quote recovery; delimiter / header / encoding auto-detection with manual override.
+- Retry button after a background-worker failure; `Ctrl+Shift+H` / `Ctrl+Shift+U` hide the selected column / show all columns (registered as keybinding commands); a `N hidden` chip lists hidden columns.
 - Settings: `getUniqueValues.csv.defaultPageSize`, `columnColors`, `longText`, `defaultColumnWidth`.
 
 ### Changed

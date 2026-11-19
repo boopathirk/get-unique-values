@@ -293,3 +293,12 @@ Where this section disagrees with §2-§6, this section wins.
 6. **Perf script** (`npm run perf -- 300 mixed|narrow`) uses two shapes: *mixed* (20 columns, 1-4 KB HTML description with quotes and newlines on every 10th row, about 700k rows at 300 MB) and *narrow* (short rows, about 1.5M rows). "1.5M rows × 1-4 KB" cannot fit in 300 MB.
 7. **Unclosed quote** recovery rewinds to the opening quote and ignores quotes until the end of that line; the row is then shown split on the delimiter.
 8. **Blank lines** are never rows.
+9. **Click behaviour.** A single click selects a cell; double-click or `Enter` opens the detail panel (§4.2 said "click or Enter").
+10. **Picker rows** show no empty-value percentage. That needs a stats scan, which is M1 feature 13.
+11. **Perf script** measures the engine's in-process memory (heap/RSS of the script), not the extension host process.
+12. **README media.** Screenshots and the demo GIF need a person with VS Code and are not part of this release's automated work.
+13. **Retry (§5).** An `error` message may carry `retry: true` (set when the worker dies). The banner then shows a Retry button that sends `{type:'retry'}`; the host disposes the worker, creates a new `WorkerClient` and reopens the file.
+14. **Keybindings via commands.** `Ctrl+Shift+H` and `Ctrl+Shift+U` (`Cmd` on macOS) are contributed as the hidden commands `get-unique-values.csv.hideSelectedColumn` and `get-unique-values.csv.showAllColumns`, active when `activeCustomEditorId == 'getUniqueValues.csvViewer'`, because VS Code intercepts those chords before the webview. The host posts `{type:'command', name}` to the most recently active viewer. The in-webview key handlers stay; both operations are idempotent.
+15. **Copy.** `Ctrl+C` is handled by a `copy` event listener: it copies the selected cell when no text is selected and focus is not in an input.
+16. **Hidden-columns chip.** A button next to Columns shows `N hidden` and lists the hidden columns; choosing one shows it, or "Show all".
+17. **Open-time rules.** A file of only blank lines opens as empty. After Cancel a search keeps its partial view and paging treats it as complete; the status bar still says "(partial)".

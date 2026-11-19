@@ -16,18 +16,25 @@ export function csvField(value: string, delimiter: string): string {
     return value.includes(delimiter) || /["\r\n]/.test(value) ? `"${value.replace(/"/g, '""')}"` : value;
 }
 
-/** JSON object keys from header names: a repeated name gets _2, _3, … */
+/** JSON object keys from header names: a repeated name gets _2, _3, … (never colliding with another key) */
 export function uniqueKeys(header: string[]): string[] {
-    const seen = new Map<string, number>();
+    const used = new Set<string>();
+    const counts = new Map<string, number>();
     return header.map((name) => {
-        const n = (seen.get(name) ?? 0) + 1;
-        seen.set(name, n);
-        return n === 1 ? name : `${name}_${n}`;
+        let key = name;
+        let n = counts.get(name) ?? 1;
+        while (used.has(key)) {
+            n++;
+            key = `${name}_${n}`;
+        }
+        counts.set(name, n);
+        used.add(key);
+        return key;
     });
 }
 
 function toObject(keys: string[], fields: string[]): Record<string, string> {
-    const out: Record<string, string> = {};
+    const out: Record<string, string> = Object.create(null);
     keys.forEach((k, i) => {
         out[k] = fields[i] ?? '';
     });

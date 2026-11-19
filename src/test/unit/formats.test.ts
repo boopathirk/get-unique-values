@@ -40,6 +40,15 @@ suite('formats', () => {
         assert.deepStrictEqual(uniqueKeys(['a', 'a', 'b', 'a']), ['a', 'a_2', 'b', 'a_3']);
         assert.deepStrictEqual(JSON.parse(render('jsonl', ['a', 'a'], [['1', '2']])), { a: '1', a_2: '2' });
     });
+    test('uniqueKeys never collides with an existing suffixed name', () => {
+        const keys = uniqueKeys(['a', 'a', 'a_2']);
+        assert.strictEqual(new Set(keys).size, 3);
+        assert.deepStrictEqual(keys.slice(0, 2), ['a', 'a_2']);
+    });
+    test('a __proto__ header keeps both keys', () => {
+        const line = render('jsonl', ['__proto__', 'x'], [['1', '2']]).trim();
+        assert.deepStrictEqual(Object.keys(JSON.parse(line)).sort(), ['__proto__', 'x']);
+    });
     test('markdown escapes pipes and newlines', () => {
         assert.strictEqual(
             render('markdown', H, [['1', 'a|b\nc']]),

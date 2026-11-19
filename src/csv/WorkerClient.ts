@@ -4,6 +4,17 @@ import type { RequestBody, WorkerMessage, WorkerRequest } from './protocol';
 
 type Progress = IndexProgress | FilterProgress | ExportProgress | ImportProgress;
 
+/**
+ * A request that can never be answered because its worker is gone: disposed by the host (viewer closed,
+ * retry, reopen) or died unexpectedly. Callers use `reason` to decide whether to tell the user.
+ */
+export class WorkerDisposedError extends Error {
+    constructor(readonly reason: 'disposed' | 'died', message: string) {
+        super(message);
+        this.name = 'WorkerDisposedError';
+    }
+}
+
 interface Pending {
     resolve: (value: unknown) => void;
     reject: (error: Error) => void;
@@ -37,7 +48,7 @@ export class WorkerClient {
     request<T>(body: RequestBody, onProgress?: (p: Progress) => void): { id: number; promise: Promise<T> } {
         const id = this.nextId++;
         if (this.dead || this.disposed) {
-            return { id, promise: Promise.reject(new Error('The CSV worker is not running.')) };
+            return { id, promise: Promise.reject(new WorkerDisposedError(this.disposed ? 'disposed' : 'died', 'The CSV worker is not running.')) };
         }
         if (body.type === 'open') {
             // A new open replaces the previous file: drop index-progress handlers of the old one.
@@ -65,10 +76,18 @@ export class WorkerClient {
     }
 
     dispose(): void {
+        if (this.disposed) {
+            return;
+        }
         this.disposed = true;
+        const all = [...this.pending.values()];
         this.pending.clear();
         this.lingering.clear();
         void this.worker.terminate();
+        const error = new WorkerDisposedError('disposed', 'The CSV worker was stopped.');
+        for (const p of all) {
+            p.reject(error);
+        }
     }
 
     /** True while the worker thread is usable (not disposed and has not died). */
@@ -111,7 +130,7 @@ export class WorkerClient {
                 const p = this.pending.get(m.id);
                 const handler = p?.onProgress ?? this.lingering.get(m.id);
                 handler?.(m.data);
-                if ('done' in m.data && m.data.done) {
+                if ('done' in m.data && typeof m.data.done === 'boolean' && m.data.done) {
                     if (p) {
                         p.doneSeen = true;
                     }
@@ -133,8 +152,9 @@ export class WorkerClient {
         const all = [...this.pending.values()];
         this.pending.clear();
         this.lingering.clear();
+        const died = new WorkerDisposedError('died', error.message);
         for (const p of all) {
-            p.reject(error);
+            p.reject(died);
         }
         this.onFatal(error.message);
     }

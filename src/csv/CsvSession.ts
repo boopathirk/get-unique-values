@@ -2,7 +2,8 @@ import * as vscode from 'vscode';
 import * as fs from 'fs';
 import * as path from 'path';
 import { createHash, randomBytes } from 'crypto';
-import { WorkerClient } from './WorkerClient';
+import { WorkerClient, WorkerDisposedError } from './WorkerClient';
+import { isSameFile } from './core/paths';
 import { PAGE_SIZES, headerHash, sanitizeLayout } from './core/layout';
 import type { ColorMode, LongText } from './core/layout';
 import type { Predicate } from './core/predicates';
@@ -27,13 +28,18 @@ function statusMessage(result: Exclude<OpenResult, { kind: 'ok' }>): string {
         case 'binary':
             return 'This looks like a binary file, not a CSV.';
         case 'unsupported-encoding':
-            return `Encoding ${result.encoding} is not supported yet (planned for v0.2). Open the file in the text editor instead.`;
+            return `Encoding ${result.encoding} is not supported yet is not supported yet. Open the file in the text editor instead.`;
     }
 }
 
 /** Escape glob metacharacters so a file name is matched literally. */
 function escapeGlob(name: string): string {
     return name.replace(/[[\]{}*?!]/g, (c) => `[${c}]`);
+}
+
+/** True for a request dropped because its worker was disposed on purpose (viewer closed, retry, reopen). */
+function isDisposed(err: unknown): boolean {
+    return err instanceof WorkerDisposedError && err.reason === 'disposed';
 }
 
 function isValidDelimiter(v: string): boolean {
@@ -65,6 +71,8 @@ export class CsvSession implements vscode.Disposable {
     /** Worker request id of the Excel conversion in flight, if any. */
     private convertId: number | undefined;
     private lastError: { gen: number; message: string; retry: boolean } | undefined;
+    /** The CSV the worker reads: the file itself or the cached conversion of the chosen Excel sheet. */
+    private openedPath: string | undefined;
 
     /** Most recent page sent to the webview (read by the integration test). */
     lastPage: PageResult | undefined;
@@ -205,7 +213,11 @@ export class CsvSession implements vscode.Disposable {
             case 'nonEmpty':
                 this.worker.request<number[] | null>({ type: 'nonEmptyColumns' }).promise.then(
                     (columns) => this.post({ type: 'nonEmpty', jobId: m.jobId, columns }),
-                    (err) => this.postError(errorMessage(err)),
+                    (err) => {
+                        if (!isDisposed(err)) {
+                            this.postError(errorMessage(err));
+                        }
+                    },
                 );
                 break;
             case 'export':
@@ -248,6 +260,7 @@ export class CsvSession implements vscode.Disposable {
             if (source === undefined || gen !== this.openGen) {
                 return;
             }
+            this.openedPath = source.path;
             const { promise } = this.worker.request<OpenResult>(
                 { type: 'open', path: source.path, options: source.options },
                 (p) => {
@@ -261,7 +274,6 @@ export class CsvSession implements vscode.Disposable {
                 return;
             }
             if (result.kind !== 'ok') {
-                this.setSummary(undefined);
                 this.post({ type: 'status', kind: result.kind, message: statusMessage(result) });
                 return;
             }
@@ -277,7 +289,6 @@ export class CsvSession implements vscode.Disposable {
             if (gen !== this.openGen) {
                 return;
             }
-            this.setSummary(undefined);
             this.post({ type: 'status', kind: 'error', message: errorMessage(err) });
         }
     }
@@ -346,6 +357,11 @@ export class CsvSession implements vscode.Disposable {
                     cancelToken.onCancellationRequested(() => this.worker.cancel(id));
                     try {
                         return await promise;
+                    } catch (err) {
+                        if (err instanceof WorkerDisposedError) {
+                            return undefined; // the worker went away (closed, retried, or crashed: its own banner says so)
+                        }
+                        throw err;
                     } finally {
                         if (this.convertId === id) {
                             this.convertId = undefined;
@@ -353,7 +369,7 @@ export class CsvSession implements vscode.Disposable {
                     }
                 },
             );
-            if (!live()) {
+            if (!live() || rows === undefined) {
                 return undefined;
             }
             if (rows === null) {
@@ -376,7 +392,9 @@ export class CsvSession implements vscode.Disposable {
             this.lastPage = result;
             this.post({ type: 'page', reqId, result });
         } catch (err) {
-            this.postError(errorMessage(err));
+            if (!isDisposed(err)) {
+                this.postError(errorMessage(err));
+            }
         }
     }
 
@@ -396,7 +414,11 @@ export class CsvSession implements vscode.Disposable {
         promise
             .then(
                 (result) => this.post({ type: 'filterDone', jobId, result }),
-                (err) => this.post({ type: 'filterError', jobId, message: errorMessage(err) }),
+                (err) => {
+                    if (!isDisposed(err)) {
+                        this.post({ type: 'filterError', jobId, message: errorMessage(err) });
+                    }
+                },
             )
             .finally(() => {
                 if (this.filterJobs.get(jobId) === id) {
@@ -415,7 +437,11 @@ export class CsvSession implements vscode.Disposable {
         promise
             .then(
                 (result) => reply(result),
-                (err) => reply(null, errorMessage(err)),
+                (err) => {
+                    if (!isDisposed(err)) {
+                        reply(null, errorMessage(err));
+                    }
+                },
             )
             .finally(() => {
                 if (this.analysisJobs.get(jobId) === id) {
@@ -430,7 +456,11 @@ export class CsvSession implements vscode.Disposable {
         promise
             .then(
                 (result) => this.post({ type: 'unique', jobId, result }),
-                (err) => this.post({ type: 'unique', jobId, result: null, error: errorMessage(err) }),
+                (err) => {
+                    if (!isDisposed(err)) {
+                        this.post({ type: 'unique', jobId, result: null, error: errorMessage(err) });
+                    }
+                },
             )
             .finally(() => {
                 if (this.uniqueJobs.get(jobId) === id) {
@@ -451,7 +481,7 @@ export class CsvSession implements vscode.Disposable {
                 { label: 'JSON', description: '.json array of objects', value: 'json' },
                 { label: 'JSON Lines', description: '.jsonl, one object per line', value: 'jsonl' },
                 { label: 'TSV', description: '.tsv', value: 'tsv' },
-                { label: 'SQL INSERT', description: '.sql', value: 'sql' },
+                { label: 'SQL INSERT (ANSI quoting)', description: '.sql, "double-quoted" names (PostgreSQL, SQLite; MySQL needs ANSI_QUOTES)', value: 'sql' },
                 { label: 'Markdown table', description: '.md', value: 'markdown' },
             ],
             { title: 'Export format' },
@@ -482,16 +512,23 @@ export class CsvSession implements vscode.Disposable {
         const ext = EXPORT_EXTENSIONS[format.value];
         const base = path.basename(this.uri.fsPath).replace(/\.[^.]+$/, '');
         const target = await vscode.window.showSaveDialog({
-            defaultUri: vscode.Uri.file(path.join(path.dirname(this.uri.fsPath), `${base}.${ext}`)),
+            defaultUri: vscode.Uri.file(path.join(path.dirname(this.uri.fsPath), `${base}-export.${ext}`)),
             filters: { [format.label]: [ext] },
             title: 'Export to',
         });
-        if (!target) {
+        if (!target || this.disposed) {
+            return;
+        }
+        const opened = this.openedPath;
+        if (await isSameFile(target.fsPath, this.uri.fsPath) || (opened !== undefined && await isSameFile(target.fsPath, opened))) {
+            void vscode.window.showErrorMessage(
+                `Cannot export to ${path.basename(target.fsPath)}: it is the file open in this viewer. Run the export again and choose another file name.`,
+            );
             return;
         }
         const columns = scope.value === 'all' ? Array.from({ length: info.columnCount }, (_, i) => i) : viewColumns;
         const options: ExportOptions = {
-            format: format.value, scope: scope.value, columns, outPath: target.fsPath, table, sheetName: base.slice(0, 31),
+            format: format.value, scope: scope.value, columns, outPath: target.fsPath, table, sheetName: base,
         };
         try {
             const result = await vscode.window.withProgress(
@@ -523,6 +560,13 @@ export class CsvSession implements vscode.Disposable {
                 await vscode.commands.executeCommand('revealFileInOS', target);
             }
         } catch (err) {
+            if (this.disposed) {
+                return; // the viewer was closed: no toast for an export it can no longer finish
+            }
+            if (err instanceof WorkerDisposedError) {
+                void vscode.window.showWarningMessage('Export stopped because the viewer was closed or restarted.');
+                return;
+            }
             void vscode.window.showErrorMessage(`Export failed: ${errorMessage(err)}`);
         }
     }
@@ -592,6 +636,9 @@ export class CsvSession implements vscode.Disposable {
     }
 
     private post(message: HostToView): void {
+        if (message.type === 'status') {
+            this.setSummary(undefined); // a status screen replaces the table: the sidebar has no file to describe
+        }
         if (!this.disposed) {
             void this.panel.webview.postMessage(message);
         }

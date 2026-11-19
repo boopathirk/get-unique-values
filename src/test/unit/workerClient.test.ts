@@ -2,7 +2,7 @@ import * as assert from 'assert';
 import * as fs from 'fs';
 import * as os from 'os';
 import * as path from 'path';
-import { WorkerClient } from '../../csv/WorkerClient';
+import { WorkerClient, WorkerDisposedError } from '../../csv/WorkerClient';
 import type { WorkerMessage } from '../../csv/protocol';
 import type { FilterResult, IndexProgress, OpenResult, PageResult, UniqueResult } from '../../csv/types';
 
@@ -95,6 +95,38 @@ suite('WorkerClient lifecycle', function () {
         client.dispose();
         await client.terminateForTest(); // resolves once the worker thread has exited
         assert.deepStrictEqual(fatals, []);
+    });
+
+    test('dispose rejects every pending request with WorkerDisposedError', async () => {
+        const client = new WorkerClient(workerPath);
+        const a = client.request({ type: 'nonEmptyColumns' }).promise;
+        const b = client.request({ type: 'xlsxSheets', path: '/no/such/file.xlsx' }).promise;
+        client.dispose();
+        for (const p of [a, b]) {
+            await assert.rejects(p, (err: Error) => err instanceof WorkerDisposedError && err.reason === 'disposed');
+        }
+    });
+
+    test('a killed worker rejects pending requests with WorkerDisposedError (reason died)', async () => {
+        const client = new WorkerClient(workerPath);
+        client.onFatal = () => undefined;
+        const pending = client.request({ type: 'nonEmptyColumns' });
+        // Simulate the thread's exit before it answers: the exit handler runs failAll.
+        (client as unknown as { failAll(e: Error): void }).failAll(new Error('gone'));
+        await assert.rejects(pending.promise, (err: Error) => err instanceof WorkerDisposedError && err.reason === 'died' && /gone/.test(err.message));
+        client.dispose();
+    });
+
+    test('only a boolean done ends index progress (a numeric done is a row count)', () => {
+        const client = new WorkerClient(workerPath);
+        const seen: unknown[] = [];
+        const req = client.request({ type: 'open', path: '/no/such.csv', options: {} }, (p) => seen.push(p));
+        req.promise.catch(() => undefined);
+        client.deliverForTest({ type: 'progress', id: req.id, data: { done: 5, total: 10 } });
+        client.deliverForTest({ type: 'result', id: req.id, data: { kind: 'empty' } });
+        client.deliverForTest({ type: 'progress', id: req.id, data: { done: 6, total: 10 } });
+        assert.strictEqual(seen.length, 2, 'a numeric done is a row count, not the end-of-index flag');
+        client.dispose();
     });
 
     test('request after dispose rejects', async () => {

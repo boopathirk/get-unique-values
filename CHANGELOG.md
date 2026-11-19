@@ -2,6 +2,14 @@
 
 All notable changes to the "get-unique-values" extension are documented in this file.
 
+## [0.2.1]
+
+### Added
+- **Data Toolkit sidebar** in the Activity Bar (click the Data Toolkit icon). Four views: **Current File** (file info, bad rows, quick actions and saved column sets), **Tools** (launch the tools), **Recent & Favorites** (reopen or favorite recent files), and **Parse Presets** (save, apply and delete parse presets).
+- **Move to first column** and **Freeze column** in the CSV Viewer header menu.
+- **Duplicate checks** on chosen key columns, on whole rows, and on identical or empty columns, with **Hide extra copies**.
+- Setting `getUniqueValues.csv.presets` for saved parse presets.
+
 ## [0.2.0]
 
 ### Added

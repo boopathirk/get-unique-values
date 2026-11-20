@@ -432,13 +432,21 @@ export class CsvEngine {
         await this.indexFinished;
         this.throwIfIndexFailed();
         const total = this.dataRowCount;
+        // Keyed by a 16-byte digest of the length-prefixed key fields, so memory does not grow with row width;
+        // the key values of the groups returned are read back from each group's first row.
         const seen = new Map<string, { n: number; first: number }>();
         let capped = false;
         const outcome = await this.scan(
             [[0, total]],
             token,
             (rowNum, fields) => {
-                const key = columns.map((c) => fields[c] ?? '').join('\u0001');
+                const hash = createHash('sha1');
+                for (const c of columns) {
+                    const v = fields[c] ?? '';
+                    hash.update(`${v.length}:`);
+                    hash.update(v);
+                }
+                const key = hash.digest().subarray(0, 16).toString('latin1');
                 const entry = seen.get(key);
                 if (entry) {
                     entry.n++;
@@ -453,23 +461,31 @@ export class CsvEngine {
         if (outcome === 'cancelled') {
             return null;
         }
-        const groups: DuplicateGroup[] = [];
+        const found: Array<{ count: number; firstRow: number }> = [];
         let duplicateRows = 0;
-        let duplicateKeys = 0;
-        for (const [key, { n, first }] of seen) {
+        for (const { n, first } of seen.values()) {
             if (n > 1) {
-                duplicateKeys++;
                 duplicateRows += n;
-                groups.push({ key: key.split('\u0001'), count: n, firstRow: first });
+                found.push({ count: n, firstRow: first });
             }
         }
-        groups.sort((a, b) => b.count - a.count || a.firstRow - b.firstRow);
+        seen.clear();
+        found.sort((a, b) => b.count - a.count || a.firstRow - b.firstRow);
+        const top = found.slice(0, DUPLICATE_GROUP_CAP);
+        const firstRows = top.map((g) => g.firstRow).sort((a, b) => a - b);
+        const rows = await this.readDataRows(firstRows);
+        const byRow = new Map<number, string[]>();
+        firstRows.forEach((r, i) => byRow.set(r, rows[i]));
+        const groups: DuplicateGroup[] = top.map((g) => {
+            const row = byRow.get(g.firstRow) ?? [];
+            return { key: columns.map((c) => row[c] ?? ''), count: g.count, firstRow: g.firstRow };
+        });
         return {
             columns,
-            groups: groups.slice(0, DUPLICATE_GROUP_CAP),
-            duplicateKeys,
+            groups,
+            duplicateKeys: found.length,
             duplicateRows,
-            truncated: groups.length > DUPLICATE_GROUP_CAP,
+            truncated: found.length > DUPLICATE_GROUP_CAP,
             capped,
         };
     }

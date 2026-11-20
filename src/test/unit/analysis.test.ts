@@ -119,6 +119,35 @@ suite('CsvEngine analysis', () => {
         assert.strictEqual(await engine.duplicateColumns({ cancelled: true }), null);
     });
 
+    test('duplicateKeys: a moved field boundary is not a duplicate', async () => {
+        const engine = await load('x,y\nab,c\na,bc\nab,c\n');
+        const r = await engine.duplicateKeys([0, 1], live());
+        assert.ok(r);
+        assert.deepStrictEqual(r.groups.map((g) => [g.key, g.count, g.firstRow]), [[['ab', 'c'], 2, 0]]);
+        assert.strictEqual(r.duplicateRows, 2);
+    });
+
+    test('duplicateKeys: values containing \\u0001 are kept apart and returned intact', async () => {
+        const engine = await load('x,y\na\u0001b,c\na,b\u0001c\na\u0001b,c\n');
+        const r = await engine.duplicateKeys([0, 1], live());
+        assert.ok(r);
+        assert.deepStrictEqual(r.groups.map((g) => [g.key, g.count, g.firstRow]), [[['a\u0001b', 'c'], 2, 0]]);
+        assert.strictEqual(r.duplicateKeys, 1);
+    });
+
+    test('duplicateKeys: keys are read back for many groups in order', async () => {
+        const lines = ['k,v'];
+        for (let i = 0; i < 60; i++) {
+            lines.push(`k${i % 20},"v ${i}"`);
+        }
+        const engine = await load(`${lines.join('\n')}\n`);
+        const r = await engine.duplicateKeys([0], live());
+        assert.ok(r);
+        assert.strictEqual(r.groups.length, 20);
+        assert.deepStrictEqual(r.groups.map((g) => [g.key, g.count, g.firstRow]),
+            Array.from({ length: 20 }, (_, i) => [[`k${i}`], 3, i]));
+    });
+
     test('duplicateKeys with every column finds whole-row duplicates', async () => {
         const engine = await load('a,b\n1,x\n2,y\n1,x\n');
         const r = await engine.duplicateKeys([0, 1], live());

@@ -73,3 +73,22 @@ export function describePreset(p: Preset): string {
     }
     return parts.length > 0 ? parts.join(' · ') : 'auto-detect';
 }
+
+/** The values of the presets setting per scope, as `WorkspaceConfiguration.inspect` returns them. */
+export interface PresetScopes {
+    defaultValue?: unknown;
+    globalValue?: unknown;
+    workspaceValue?: unknown;
+}
+
+/**
+ * Where saving or deleting a preset must write: the workspace settings when they define presets (they
+ * override the user settings), otherwise the user settings. `list` is that scope's own presets, so a
+ * change never copies presets from the other scope into it.
+ */
+export function presetWriteTarget(scopes: PresetScopes | undefined): { scope: 'workspace' | 'global'; list: Preset[] } {
+    if (scopes?.workspaceValue !== undefined) {
+        return { scope: 'workspace', list: sanitizePresets(scopes.workspaceValue) };
+    }
+    return { scope: 'global', list: sanitizePresets(scopes?.globalValue) };
+}

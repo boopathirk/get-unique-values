@@ -2,7 +2,7 @@ import * as vscode from 'vscode';
 import { CsvViewerApi, NO_VIEWER_MESSAGE } from '../csv/CsvEditorProvider';
 import type { CsvSession } from '../csv/CsvSession';
 import type { ViewCommand } from '../csv/protocol';
-import { Preset, removePreset, sanitizePresets, upsertPreset } from '../csv/core/presets';
+import { Preset, presetWriteTarget, removePreset, sanitizePresets, upsertPreset } from '../csv/core/presets';
 import { FileNode, FileProvider, PresetNode, PresetsProvider, RecentProvider, RecentNode, ToolsProvider } from './trees';
 import {
     RecentState, clearRecent, removeRecent, sanitizeRecent, toggleFavorite, touch,
@@ -25,13 +25,21 @@ function presetsConfig(): vscode.WorkspaceConfiguration {
     return vscode.workspace.getConfiguration('getUniqueValues.csv');
 }
 
+/** The effective presets (workspace settings override user settings), as the Parse Presets view shows them. */
 function readPresets(): Preset[] {
     return sanitizePresets(presetsConfig().get('presets'));
 }
 
-async function writePresets(list: Preset[]): Promise<void> {
+/**
+ * Change the presets in the scope that defines them: the workspace settings when they set presets,
+ * otherwise the user settings. `change` gets that scope's own list, not the merged one.
+ */
+async function updatePresets(change: (list: Preset[]) => Preset[]): Promise<void> {
+    const config = presetsConfig();
+    const { scope, list } = presetWriteTarget(config.inspect('presets'));
+    const target = scope === 'workspace' ? vscode.ConfigurationTarget.Workspace : vscode.ConfigurationTarget.Global;
     try {
-        await presetsConfig().update('presets', list, vscode.ConfigurationTarget.Global);
+        await config.update('presets', change(list), target);
     } catch (err) {
         void vscode.window.showErrorMessage(`Could not save the parse presets: ${err instanceof Error ? err.message : String(err)}`);
     }
@@ -177,7 +185,7 @@ export function registerSidebar(context: vscode.ExtensionContext, api: CsvViewer
         }),
         vscode.commands.registerCommand('get-unique-values.sidebar.deletePreset', async (node?: PresetNode) => {
             if (node?.kind === 'preset') {
-                await writePresets(removePreset(readPresets(), node.preset.name));
+                await updatePresets((list) => removePreset(list, node.preset.name));
             }
         }),
         vscode.commands.registerCommand('get-unique-values.sidebar.savePreset', async () => {
@@ -204,7 +212,7 @@ export function registerSidebar(context: vscode.ExtensionContext, api: CsvViewer
                 encoding: chosen.encoding ?? shown?.encoding,
             }]);
             if (preset) {
-                await writePresets(upsertPreset(readPresets(), preset));
+                await updatePresets((list) => upsertPreset(list, preset));
             }
         }),
     );

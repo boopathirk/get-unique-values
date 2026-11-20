@@ -1,5 +1,5 @@
 import * as assert from 'assert';
-import { describePreset, removePreset, sanitizePresets, upsertPreset } from '../../csv/core/presets';
+import { describePreset, presetWriteTarget, removePreset, sanitizePresets, upsertPreset } from '../../csv/core/presets';
 
 suite('presets', () => {
     test('sanitize keeps valid presets and drops junk', () => {
@@ -25,6 +25,22 @@ suite('presets', () => {
     });
     test('remove by name', () => {
         assert.deepStrictEqual(removePreset([{ name: 'A' }, { name: 'B' }], 'a'), [{ name: 'B' }]);
+    });
+    test('write target: the workspace when it defines presets, with its own list', () => {
+        assert.deepStrictEqual(
+            presetWriteTarget({ globalValue: [{ name: 'G' }], workspaceValue: [{ name: 'W' }] }),
+            { scope: 'workspace', list: [{ name: 'W' }] },
+        );
+        assert.deepStrictEqual(
+            presetWriteTarget({ globalValue: [{ name: 'G' }], workspaceValue: [] }),
+            { scope: 'workspace', list: [] },
+            'an empty workspace list still overrides the user list',
+        );
+    });
+    test('write target: user settings otherwise, never the merged value', () => {
+        assert.deepStrictEqual(presetWriteTarget({ globalValue: [{ name: 'G' }] }), { scope: 'global', list: [{ name: 'G' }] });
+        assert.deepStrictEqual(presetWriteTarget({ defaultValue: [{ name: 'D' }] }), { scope: 'global', list: [] });
+        assert.deepStrictEqual(presetWriteTarget(undefined), { scope: 'global', list: [] });
     });
     test('describe', () => {
         assert.strictEqual(describePreset({ name: 'x', delimiter: ';', hasHeader: false, encoding: 'utf-8' }), '; · no header · utf-8');

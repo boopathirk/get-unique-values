@@ -10,11 +10,21 @@ All notable changes to the "get-unique-values" extension are documented in this 
 - **Duplicate checks** on chosen key columns, on whole rows, and on identical or empty columns, with **Hide extra copies**.
 - Setting `getUniqueValues.csv.presets` for saved parse presets.
 
+### Fixed
+- **Export can no longer overwrite the file being viewed.** The suggested name is now `<file>-export.<ext>`, choosing the viewed file (or its cached Excel conversion) is refused, and exports are written to a temporary `.part` file that is renamed into place only when complete, so a cancelled or failed export leaves nothing behind and keeps an existing file intact.
+- Closing or restarting the viewer during an export, Excel conversion or scan no longer leaves a progress notification spinning; the export reports that it stopped.
+- The large-file prompt now appears for big CSV / TSV / PSV files (including files over 50 MB) and in a fresh window; the extension activates once VS Code has started.
+- Excel sheets with a title row in A1 now show every column: rows are padded to the widest row instead of the first row.
+- Duplicate checks on many or wide columns use far less memory, and values containing control characters are no longer merged or split.
+- Excel export sheet names with characters Excel does not allow (such as `report[2024]`) no longer produce a broken workbook.
+- Parse presets are saved and deleted in the workspace settings when the workspace defines them, instead of always in user settings.
+- Hiding several duplicate or empty columns updates the table once; a file that shrinks on disk while open shows a reload message instead of garbled rows; the SQL export option is labelled **SQL INSERT (ANSI quoting)**.
+
 ## [0.2.0]
 
 ### Added
 - **Excel files**: `.xlsx` and `.xlsm` files open in the CSV Viewer with a sheet picker (command **CSV Viewer: Choose Excel Sheet…**). Each sheet is converted once to a cached CSV, streamed, so large sheets work.
-- **Export…** (editor toolbar and Command Palette) writes the current view or the whole file as CSV, Excel, JSON, JSON Lines, TSV, SQL INSERT or Markdown.
+- **Export…** (the viewer's toolbar and the Command Palette) writes the current view or the whole file as CSV, Excel, JSON, JSON Lines, TSV, SQL INSERT or Markdown.
 
 ### Notes
 - `.xls` and `.ods` are not supported yet.

@@ -8,7 +8,7 @@
    code --install-extension boopathi08.get-unique-values
    ```
    Marketplace page: <https://marketplace.visualstudio.com/items?itemName=boopathi08.get-unique-values>
-3. **Open a CSV in the viewer:** right-click a `.csv` / `.tsv` / `.psv` file in the Explorer → **Open in CSV Viewer**, or click the button in the editor title bar, or use **Open With… → CSV Viewer**. The normal text editor stays the default.
+3. **Open a CSV in the viewer:** right-click a `.csv` / `.tsv` / `.psv` file in the Explorer → **Open in CSV Viewer**, or click the button in the editor title bar, or use **Open With… → CSV Viewer**. The normal text editor stays the default for CSV files; `.xlsx` / `.xlsm` workbooks open in the viewer by default (see [Excel files](#excel-files)).
 4. **Remove duplicate lines:** open any file, press `Ctrl+Alt+U` (`Cmd+Alt+U` on macOS), or run **Get Unique Values** from the Command Palette (`Ctrl+Shift+P`).
 5. **Open the sidebar:** click the **Data Toolkit** icon in the Activity Bar (the left-hand icon column) to open the sidebar described below.
 
@@ -49,10 +49,10 @@ Open a file with **right-click → Open in CSV Viewer**, the button in the edito
 | Column types | Each column's detected type is shown as a hint in the header tooltip. |
 | Column stats | Column menu → *Column stats*: empty %, distinct count, min / max, lengths and sample values. |
 | Find duplicates | Column menu → *Find duplicates*: lists repeated values; click a value to filter the table to its rows. |
-| Large-file prompt | Opening a CSV above `getUniqueValues.csv.largeFileMB` offers to open it in the CSV Viewer. |
+| Large-file prompt | Opening a CSV / TSV / PSV file in the text editor offers to open it in the CSV Viewer when the file is larger than `getUniqueValues.csv.largeFileMB` (default 20 MB; `0` turns the prompt off). |
 | Copy | Copy a cell, or a row as CSV or JSON. |
 | Open Excel files (.xlsx, .xlsm) | Open a workbook in the viewer and pick a sheet; each sheet is converted once to a cached CSV, so large sheets work. Use **CSV Viewer: Choose Excel Sheet…** to switch sheets. |
-| Export and convert (CSV, Excel, JSON, JSON Lines, TSV, SQL INSERT, Markdown) | Export… (toolbar or Command Palette) writes the current filtered view or the whole file in any of these formats. |
+| Export and convert (CSV, Excel, JSON, JSON Lines, TSV, SQL INSERT, Markdown) | **Export…** (the viewer's toolbar or the Command Palette) writes the current filtered view or the whole file in any of these formats. The suggested name is `<file>-export.<ext>`; exporting onto the file being viewed is refused, and the file is written under a temporary name and only renamed into place when complete. |
 
 Keyboard: arrows move the cell, `PageUp`/`PageDown` change page, `Ctrl+F` search, `Enter` cell detail, `Shift+Enter` record view, `Ctrl+C` copy cell, `Ctrl+Shift+H` hide column, `Ctrl+Shift+U` show all columns, `Esc` close panel.
 
@@ -64,10 +64,24 @@ Keyboard: arrows move the cell, `PageUp`/`PageDown` change page, `Ctrl+F` search
 | `getUniqueValues.csv.columnColors` | `headerAndCells` | `header`, `headerAndCells` or `off` |
 | `getUniqueValues.csv.longText` | `truncate` | `truncate`, `wrap` or `full` |
 | `getUniqueValues.csv.defaultColumnWidth` | `300` | Pixels |
+| `getUniqueValues.csv.largeFileMB` | `20` | Offer the CSV Viewer for CSV / TSV / PSV files larger than this many MB; `0` turns the prompt off |
+| `getUniqueValues.csv.presets` | `[]` | Saved parse presets (`name`, `delimiter`, `hasHeader`, `encoding`); managed from the sidebar's Parse Presets view. Saved to the workspace settings when the workspace defines presets, otherwise to user settings |
 
-### Limitations in 0.1.0
+### Excel files
 
-Read-only (editing, sorting, export and AI prompts are planned). UTF-16 files are detected but not yet supported.
+- `.xlsx` and `.xlsm` files open in the viewer by default. To use another editor for them, right-click the tab → **Reopen Editor With…**, or set it permanently with `workbench.editorAssociations`, for example `"workbench.editorAssociations": { "*.xlsx": "default" }`.
+- Each sheet is converted once to a cached CSV (kept for 7 days). Every row is padded to the widest row's width, so a title in A1 does not hide the table. Fully empty rows are skipped.
+- Dates are shown as ISO 8601 UTC text (for example `2024-01-02T00:00:00.000Z`); formulas show their cached result.
+- `.xls` and `.ods` are not supported.
+
+### Export notes
+
+- **Excel**: at most 1,048,575 data rows (Excel's limit of 1,048,576 rows including the header); a longer export stops there and says so. Plain numbers become numeric cells; values such as `007` or 16+ digit numbers stay text. The sheet name is the file name with characters Excel does not allow (`[ ] : * ? / \`) replaced.
+- **SQL INSERT**: uses ANSI-style quoting, `"column"` for names and `'text'` for values. It works as-is in PostgreSQL and SQLite; MySQL needs `ANSI_QUOTES` mode (`SET sql_mode = 'ANSI_QUOTES'`).
+
+### Limitations
+
+Read-only: the viewer does not edit or sort the file. UTF-16 files are detected but not yet supported.
 
 ## Get Unique Values
 

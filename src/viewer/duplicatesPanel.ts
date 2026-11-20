@@ -1,7 +1,7 @@
 import { visibleColumns } from '../csv/core/layout';
 import { applyFilters, emit } from './actions';
 import { fmt, h } from './dom';
-import { hideColumn } from './layoutOps';
+import { clampPinned, mutate } from './layoutOps';
 import { panelHeader } from './panelCommon';
 import { cancelAnalysis, post, state } from './state';
 
@@ -215,14 +215,20 @@ function renderRows(body: HTMLElement): void {
     body.append(results);
 }
 
+/** Hide the columns in one layout change (one save and redraw), never hiding the last visible column. */
 function hideMany(columns: number[]): void {
-    for (const c of columns) {
-        const layout = state.layout;
-        if (layout && visibleColumns(layout).filter((v) => v !== c).length === 0) {
-            return;
+    mutate((l) => {
+        for (const c of columns) {
+            if (l.hidden.includes(c)) {
+                continue;
+            }
+            if (visibleColumns(l).filter((v) => v !== c).length === 0) {
+                break;
+            }
+            l.hidden.push(c);
         }
-        hideColumn(c);
-    }
+        clampPinned(l);
+    });
 }
 
 function renderColumns(body: HTMLElement): void {

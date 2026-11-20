@@ -182,13 +182,15 @@ export async function convertSheetToCsv(
                         break;
                     }
                     const values = (row.values as unknown[]).slice(1).map(cellText);
-                    if (lines > 0 && values.length !== width) {
+                    // An empty row (cells with only a fill or border) is written as "": that is already one field.
+                    const fields = Math.max(1, values.length);
+                    if (lines > 0 && fields !== width) {
                         ragged = true;
                     }
-                    width = Math.max(width, values.length);
+                    width = Math.max(width, fields);
                     const line = `${values.map((c) => csvField(c, ',')).join(',')}\n`;
                     lineBytes.push(Buffer.byteLength(line));
-                    cells.push(values.length);
+                    cells.push(fields);
                     buffer.push(line);
                     lines++;
                     if (buffer.length >= 5000) {

@@ -97,6 +97,34 @@ suite('xlsx import', () => {
         assert.deepStrictEqual(fs.readdirSync(sub), ['t.csv'], 'no temp files are left behind');
     });
 
+    test('a styled but empty row gets exactly the sheet width', async () => {
+        const make = async (name: string, title: boolean): Promise<string> => {
+            const file = path.join(dir, name);
+            const wb = new ExcelJS.Workbook();
+            const ws = wb.addWorksheet('S');
+            if (title) {
+                ws.addRow(['Title']);
+            }
+            ws.addRow(['a', 'b', 'c']);
+            const styled = ws.getRow(ws.rowCount + 1).getCell(2);
+            styled.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFFFFF00' } };
+            styled.border = { top: { style: 'thin' } };
+            ws.addRow([1, 2, 3]);
+            await wb.xlsx.writeFile(file);
+            return file;
+        };
+        const titled = path.join(dir, 'styled-titled.csv');
+        assert.strictEqual(await convertSheetToCsv(await make('styled-titled.xlsx', true), 0, titled, live(), noop), 3);
+        assert.strictEqual(fs.readFileSync(titled, 'utf8'), 'Title,,\na,b,c\n,,\n1,2,3\n');
+        const uniform = path.join(dir, 'styled-uniform.csv');
+        assert.strictEqual(await convertSheetToCsv(await make('styled-uniform.xlsx', false), 0, uniform, live(), noop), 2);
+        const text = fs.readFileSync(uniform, 'utf8');
+        assert.strictEqual(text, 'a,b,c\n,,\n1,2,3\n');
+        for (const line of text.trimEnd().split('\n')) {
+            assert.strictEqual(line.split(',').length, 3, `every row has 3 fields: ${JSON.stringify(line)}`);
+        }
+    });
+
     test('padding a large sheet copies the body intact', async () => {
         const big = path.join(dir, 'big.xlsx');
         const wb = new ExcelJS.Workbook();

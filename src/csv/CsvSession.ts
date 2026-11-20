@@ -28,7 +28,7 @@ function statusMessage(result: Exclude<OpenResult, { kind: 'ok' }>): string {
         case 'binary':
             return 'This looks like a binary file, not a CSV.';
         case 'unsupported-encoding':
-            return `Encoding ${result.encoding} is not supported yet is not supported yet. Open the file in the text editor instead.`;
+            return `Encoding ${result.encoding} is not supported yet. Open the file in the text editor instead.`;
     }
 }
 

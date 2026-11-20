@@ -88,6 +88,16 @@ suite('WorkerClient', function () {
 suite('WorkerClient lifecycle', function () {
     this.timeout(20000);
 
+    test('exited resolves once a disposed worker thread has stopped', async () => {
+        const client = new WorkerClient(workerPath);
+        let done = false;
+        void client.exited.then(() => { done = true; });
+        await new Promise((r) => setTimeout(r, 20));
+        assert.strictEqual(done, false, 'still running before dispose');
+        client.dispose();
+        await client.exited;
+    });
+
     test('dispose does not report a fatal error', async () => {
         const client = new WorkerClient(workerPath);
         const fatals: string[] = [];

@@ -3,7 +3,7 @@ import * as fs from 'fs';
 import * as path from 'path';
 import { createHash, randomBytes } from 'crypto';
 import { WorkerClient, WorkerDisposedError } from './WorkerClient';
-import { isSameFile } from './core/paths';
+import { isSameFile, partPath } from './core/paths';
 import { PAGE_SIZES, headerHash, sanitizeLayout } from './core/layout';
 import type { ColorMode, LongText } from './core/layout';
 import type { Predicate } from './core/predicates';
@@ -40,6 +40,22 @@ function escapeGlob(name: string): string {
 /** True for a request dropped because its worker was disposed on purpose (viewer closed, retry, reopen). */
 function isDisposed(err: unknown): boolean {
     return err instanceof WorkerDisposedError && err.reason === 'disposed';
+}
+
+/**
+ * Remove an export's temporary file left by a worker that was terminated mid-export (it could not clean up).
+ * Waits for the thread to stop so its file handle is closed; Windows may still hold the file briefly, so retry.
+ */
+async function removeOrphanPart(worker: WorkerClient, part: string): Promise<void> {
+    await Promise.race([worker.exited, new Promise<void>((resolve) => setTimeout(resolve, 5000))]);
+    for (let attempt = 0; attempt < 5; attempt++) {
+        try {
+            await fs.promises.rm(part, { force: true });
+            return;
+        } catch {
+            await new Promise<void>((resolve) => setTimeout(resolve, 100));
+        }
+    }
 }
 
 function isValidDelimiter(v: string): boolean {
@@ -527,21 +543,24 @@ export class CsvSession implements vscode.Disposable {
             return;
         }
         const columns = scope.value === 'all' ? Array.from({ length: info.columnCount }, (_, i) => i) : viewColumns;
+        // The host picks the temporary file so it can remove it if the worker is terminated mid-export.
+        const part = partPath(target.fsPath);
         const options: ExportOptions = {
-            format: format.value, scope: scope.value, columns, outPath: target.fsPath, table, sheetName: base,
+            format: format.value, scope: scope.value, columns, outPath: target.fsPath, partPath: part, table, sheetName: base,
         };
+        const worker = this.worker;
         try {
             const result = await vscode.window.withProgress(
                 { location: vscode.ProgressLocation.Notification, title: `Exporting ${path.basename(target.fsPath)}`, cancellable: true },
                 async (progress, cancelToken) => {
                     let last = 0;
-                    const { id, promise } = this.worker.request<ExportResult | null>({ type: 'export', options }, (p) => {
+                    const { id, promise } = worker.request<ExportResult | null>({ type: 'export', options }, (p) => {
                         const { done, total } = p as ExportProgress;
                         const pct = total > 0 ? Math.floor((done / total) * 100) : 100;
                         progress.report({ increment: pct - last, message: `${done.toLocaleString()} of ${total.toLocaleString()} rows` });
                         last = pct;
                     });
-                    cancelToken.onCancellationRequested(() => this.worker.cancel(id));
+                    cancelToken.onCancellationRequested(() => worker.cancel(id));
                     return promise;
                 },
             );
@@ -560,6 +579,9 @@ export class CsvSession implements vscode.Disposable {
                 await vscode.commands.executeCommand('revealFileInOS', target);
             }
         } catch (err) {
+            if (err instanceof WorkerDisposedError || this.disposed) {
+                void removeOrphanPart(worker, part);
+            }
             if (this.disposed) {
                 return; // the viewer was closed: no toast for an export it can no longer finish
             }

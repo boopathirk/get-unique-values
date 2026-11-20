@@ -38,7 +38,7 @@ export async function exportToFile(
     const info = await engine.getInfo();
     const header = opts.columns.map((c) => info.header[c] ?? `Column ${c + 1}`);
     const pick = (row: string[]): string[] => opts.columns.map((c) => row[c] ?? '');
-    const part = partPath(opts.outPath);
+    const part = opts.partPath ?? partPath(opts.outPath);
     try {
         const written = opts.format === 'xlsx'
             ? await writeXlsx(engine, opts, part, header, pick, token, onProgress)

@@ -91,6 +91,39 @@ suite('exportToFile', () => {
         assert.deepStrictEqual(parts(), []);
     });
 
+    for (const format of ['csv', 'xlsx'] as const) {
+        test(`${format}: a part path chosen by the caller is written and renamed onto the target`, async () => {
+            const engine = await load(CSV);
+            const target = out(`chosen.${format}`);
+            const part = out(`chosen.${format}.host1234.part`);
+            let sawPart = false;
+            const r = await exportToFile(engine, opts({ outPath: target, partPath: part, format }), live(), () => {
+                sawPart = sawPart || fs.existsSync(part);
+            });
+            assert.strictEqual(r?.path, target);
+            assert.ok(sawPart, 'the export is written to the supplied part path');
+            assert.ok(fs.existsSync(target));
+            assert.strictEqual(fs.existsSync(part), false);
+            assert.deepStrictEqual(parts(), []);
+        });
+    }
+
+    test('cancel removes the part path chosen by the caller', async () => {
+        const engine = await load(CSV);
+        const target = out('chosen-cancel.csv');
+        const part = out('chosen-cancel.csv.host5678.part');
+        const token: CancelToken = { cancelled: false };
+        let sawPart = false;
+        const r = await exportToFile(engine, opts({ outPath: target, partPath: part }), token, () => {
+            sawPart = sawPart || fs.existsSync(part);
+            token.cancelled = true;
+        });
+        assert.strictEqual(r, null);
+        assert.ok(sawPart);
+        assert.strictEqual(fs.existsSync(part), false);
+        assert.strictEqual(fs.existsSync(target), false);
+    });
+
     test('an existing target is only replaced once the export succeeded', async () => {
         const engine = await load(CSV);
         const p = out('existing.csv');

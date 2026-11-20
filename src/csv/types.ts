@@ -153,6 +153,11 @@ export interface ExportOptions {
     outPath: string;
     table?: string;
     sheetName?: string;
+    /**
+     * Temporary file to write before renaming onto `outPath`. The host chooses it so it can remove it
+     * if the worker is terminated mid-export; without it the worker picks `<outPath>.<8 hex>.part`.
+     */
+    partPath?: string;
 }
 
 export interface ExportResult {

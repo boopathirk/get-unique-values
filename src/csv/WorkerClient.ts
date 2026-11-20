@@ -35,10 +35,14 @@ export class WorkerClient {
 
     onFatal: (message: string) => void = () => undefined;
 
+    /** Resolves when the worker thread has stopped (after dispose() or a crash): its open files are closed. */
+    readonly exited: Promise<void>;
+
     constructor(workerPath: string) {
         this.worker = new Worker(workerPath);
         this.worker.on('message', (m: WorkerMessage) => this.onMessage(m));
         this.worker.on('error', (e) => this.failAll(e instanceof Error ? e : new Error(String(e))));
+        this.exited = new Promise<void>((resolve) => this.worker.once('exit', () => resolve()));
         this.worker.on('exit', (code) => {
             // Any exit is unexpected unless dispose() ran (failAll ignores disposed clients).
             this.failAll(new Error(`The CSV worker stopped unexpectedly (exit code ${code}).`));

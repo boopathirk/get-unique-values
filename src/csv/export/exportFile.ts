@@ -14,11 +14,18 @@ export function xlsxValue(v: string): string | number {
     return /^-?(0|[1-9]\d{0,14})(\.\d+)?$/.test(v) && String(Number(v)) === v ? Number(v) : v;
 }
 
-/** A valid Excel sheet name: no []:*?/\\, no leading or trailing apostrophe, at most 31 characters. */
+/**
+ * A valid Excel sheet name: none of []:*?/\, no leading or trailing apostrophe, at most 31 UTF-16 code units
+ * (never splitting a surrogate pair), and not the reserved name "History". Falls back to "Data".
+ */
 export function sanitizeSheetName(name: string): string {
     const trim = (s: string): string => s.replace(/^'+|'+$/g, '');
-    const clean = trim(trim(name.replace(/[[\]:*?/\\]/g, '_')).slice(0, 31));
-    return clean === '' ? 'Data' : clean;
+    let cut = trim(name.replace(/[[\]:*?/\\]/g, '_')).slice(0, 31);
+    if (/[\uD800-\uDBFF]$/.test(cut)) {
+        cut = cut.slice(0, -1); // a high surrogate whose pair was cut off
+    }
+    const clean = trim(cut);
+    return clean === '' || clean.toLowerCase() === 'history' ? 'Data' : clean;
 }
 
 /**

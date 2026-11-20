@@ -234,6 +234,15 @@ suite('exportToFile', () => {
         assert.strictEqual(sanitizeSheetName("it's"), "it's");
         assert.strictEqual(sanitizeSheetName('x'.repeat(40)), 'x'.repeat(31));
         assert.strictEqual(sanitizeSheetName(`${'y'.repeat(30)}'z`), `${'y'.repeat(30)}`);
+        assert.strictEqual(sanitizeSheetName('History'), 'Data', 'Excel reserves History');
+        assert.strictEqual(sanitizeSheetName('history'), 'Data');
+        assert.strictEqual(sanitizeSheetName(' History'), ' History');
+        assert.strictEqual(sanitizeSheetName('History 2024'), 'History 2024');
+        // The 31 limit counts UTF-16 code units (as Excel and ExcelJS do); the cut must not split a surrogate pair.
+        const emoji = '\u{1F600}';
+        assert.strictEqual(sanitizeSheetName(`${'e'.repeat(30)}${emoji}${emoji}`), 'e'.repeat(30));
+        assert.strictEqual(sanitizeSheetName(`${'e'.repeat(29)}${emoji}${emoji}${emoji}`), `${'e'.repeat(29)}${emoji}`);
+        assert.ok(!/[\uD800-\uDBFF]$/.test(sanitizeSheetName(`${'e'.repeat(30)}${emoji}`)));
     });
 
     test('xlsxValue keeps leading zeros and long numbers as text', () => {

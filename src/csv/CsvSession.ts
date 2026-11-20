@@ -358,6 +358,11 @@ export class CsvSession implements vscode.Disposable {
         await fs.promises.mkdir(cacheDir, { recursive: true });
         const out = path.join(cacheDir, `${hash}.csv`);
         const cached = await fs.promises.access(out).then(() => true, () => false);
+        if (cached) {
+            // The 7-day cache cleanup (any window) goes by mtime: keep a cache file in use from being deleted.
+            const now = new Date();
+            await fs.promises.utimes(out, now, now).catch(() => undefined);
+        }
         if (!live()) {
             return undefined;
         }

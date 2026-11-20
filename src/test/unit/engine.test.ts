@@ -294,4 +294,12 @@ suite('CsvEngine', () => {
         assert.strictEqual(result.complete, false);
         assert.strictEqual((await engine.readPage(0, 10)).complete, true);
     });
+
+    test('a file truncated after indexing fails with a clear message instead of reading garbage', async () => {
+        const { engine } = await load(SAMPLE);
+        const file = (engine as unknown as { path: string }).path;
+        fs.truncateSync(file, 20);
+        await assert.rejects(engine.readPage(0, 10), /The file changed on disk while it was open\. Reload the viewer\./);
+        await assert.rejects(engine.uniqueValues(1, live()), /changed on disk/);
+    });
 });

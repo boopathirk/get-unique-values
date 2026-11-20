@@ -590,7 +590,10 @@ export class CsvEngine {
         const from = starts.get(first);
         const to = this.rowEnd(first + count - 1);
         const buf = Buffer.allocUnsafe(to - from);
-        await this.readFully(buf, from);
+        if ((await this.readFully(buf, from)) < buf.length) {
+            // Never decode the uninitialised tail of the buffer: the file shrank since it was indexed.
+            throw new Error('The file changed on disk while it was open. Reload the viewer.');
+        }
         const out: string[][] = [];
         for (let r = 0; r < count; r++) {
             const s = starts.get(first + r) - from;
